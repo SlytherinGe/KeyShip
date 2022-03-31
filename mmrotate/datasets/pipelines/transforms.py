@@ -1,11 +1,26 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 import cv2
 import numpy as np
 from mmdet.datasets.pipelines.transforms import RandomFlip, Resize
+from mmdet.datasets.pipelines.auto_augment import Translate, Rotate
 
 from mmrotate.core import norm_angle, obb2poly_np, poly2obb_np
 from ..builder import ROTATED_PIPELINES
 
+def bbox2fields():
+    """The key correspondence from bboxes to labels, masks and
+    segmentations."""
+    bbox2label = {
+        'gt_bboxes': 'gt_labels',
+        'gt_bboxes_ignore': 'gt_labels_ignore'
+    }
+    bbox2mask = {
+        'gt_bboxes': 'gt_masks',
+        'gt_bboxes_ignore': 'gt_masks_ignore'
+    }
+    bbox2seg = {
+        'gt_bboxes': 'gt_semantic_seg',
+    }
+    return bbox2label, bbox2mask, bbox2seg
 
 @ROTATED_PIPELINES.register_module()
 class RResize(Resize):
@@ -240,3 +255,128 @@ class PolyRandomRotate(object):
                     f'angles_range={self.angles_range}, ' \
                     f'auto_bound={self.auto_bound})'
         return repr_str
+
+@ROTATED_PIPELINES.register_module()
+class RTranslate(Translate):
+
+    def __init__(self, 
+                 level, 
+                 prob=0.5, 
+                 img_fill_val=128, 
+                 seg_ignore_label=255, 
+                 direction='horizontal', 
+                 max_translate_offset=250, 
+                 random_negative_prob=0.5, 
+                 min_size=0):
+        super().__init__(level, 
+                         prob, 
+                         img_fill_val, 
+                         seg_ignore_label, 
+                         direction, 
+                         max_translate_offset, 
+                         random_negative_prob, 
+                         min_size)
+    
+    def _translate_bboxes(self, results, offset):
+        h, w, c = results['pad_shape']
+        for key in results.get('bbox_fields', []):
+            x, y, b_w, b_h, a = np.split(
+                results[key], results[key].shape[-1], axis=-1)
+            if self.direction == 'horizontal':
+                # x = np.maximum(0, x + offset)
+                # x = np.minimum(w, x)
+                x = x + offset
+            elif self.direction == 'vertical':
+                # y = np.maximum(0, y + offset)
+                # y = np.minimum(h, y)
+                y = y + offset
+
+            # the boxes translated outside of image will be filtered along with
+            # the corresponding masks, by invoking ``_filter_invalid``.
+            results[key] = np.concatenate([x, y, b_w, b_h, a],
+                                          axis=-1)
+
+    def _filter_invalid(self, results, min_size=0):
+        """Filter bboxes and masks too small or translated out of image."""
+        bbox2label, bbox2mask, _ = bbox2fields()
+        for key in results.get('bbox_fields', []):
+            bbox_w = results[key][:, 2]
+            bbox_h = results[key][:, 3]
+            valid_inds = (bbox_w > min_size) & (bbox_h > min_size)
+            valid_inds = np.nonzero(valid_inds)[0]
+            results[key] = results[key][valid_inds]
+            # label fields. e.g. gt_labels and gt_labels_ignore
+            label_key = bbox2label.get(key)
+            if label_key in results:
+                results[label_key] = results[label_key][valid_inds]
+            # mask fields, e.g. gt_masks and gt_masks_ignore
+            mask_key = bbox2mask.get(key)
+            if mask_key in results:
+                results[mask_key] = results[mask_key][valid_inds]
+        return results
+
+
+@ROTATED_PIPELINES.register_module()
+class RRotate(Rotate):
+
+    def __init__(self, 
+                 level, 
+                 scale=1, 
+                 center=None, 
+                 img_fill_val=128, 
+                 seg_ignore_label=255, 
+                 prob=0.5, 
+                 max_rotate_angle=30, 
+                 random_negative_prob=0.5):
+        super().__init__(level, 
+                         scale, 
+                         center, 
+                         img_fill_val, 
+                         seg_ignore_label, 
+                         prob, 
+                         max_rotate_angle, 
+                         random_negative_prob)
+
+    def _rotate_bboxes(self, results, rotate_matrix):
+        """Rotate the bboxes."""
+        for key in results.get('bbox_fields', []):
+            boxes = results[key]
+            rboxes = []
+            for box in boxes:
+                x, y, b_w, b_h, a = box
+                a = a * 180 / np.pi
+                box_pts = cv2.boxPoints(((x, y), (b_w, b_h), a))
+                box_pts = np.concatenate((box_pts, np.ones((4, 1), box_pts.dtype)), axis=1)
+                rbox_pts = np.matmul(box_pts, rotate_matrix.T)
+                rbox = cv2.minAreaRect(rbox_pts.astype(np.float32))
+                x, y, b_w, b_h, a = rbox[0][0], rbox[0][1], rbox[1][0], rbox[1][1], rbox[2]
+                while not 0 > a >= -90:
+                    if a >= 0:
+                        a -= 90
+                        b_w, b_h = b_h, b_w
+                    else:
+                        a += 90
+                        b_w, b_h = b_h, b_w
+                a = a / 180 * np.pi
+                assert 0 > a >= -np.pi / 2
+                rboxes.append([x, y, b_w, b_h, a])
+            results[key] = np.array(rboxes).astype(results[key].dtype)
+
+    def _filter_invalid(self, results, min_size=0):
+        """Filter bboxes and masks too small or translated out of image."""
+        bbox2label, bbox2mask, _ = bbox2fields()
+        for key in results.get('bbox_fields', []):
+            bbox_w = results[key][:, 2]
+            bbox_h = results[key][:, 3]
+            valid_inds = (bbox_w > min_size) & (bbox_h > min_size)
+            valid_inds = np.nonzero(valid_inds)[0]
+            results[key] = results[key][valid_inds]
+            # label fields. e.g. gt_labels and gt_labels_ignore
+            label_key = bbox2label.get(key)
+            if label_key in results:
+                results[label_key] = results[label_key][valid_inds]
+            # mask fields, e.g. gt_masks and gt_masks_ignore
+            mask_key = bbox2mask.get(key)
+            if mask_key in results:
+                results[mask_key] = results[mask_key][valid_inds]
+        return results

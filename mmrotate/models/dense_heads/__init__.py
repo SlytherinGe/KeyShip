@@ -11,9 +11,11 @@ from .rotated_retina_refine_head import RotatedRetinaRefineHead
 from .rotated_rpn_head import RotatedRPNHead
 from .sam_reppoints_head import SAMRepPointsHead
 
+from .extreme_headV2 import ExtremeHeadV2
+
 __all__ = [
     'RotatedAnchorHead', 'RotatedRetinaHead', 'RotatedRPNHead',
     'OrientedRPNHead', 'RotatedRetinaRefineHead', 'ODMRefineHead',
     'KFIoURRetinaHead', 'KFIoURRetinaRefineHead', 'KFIoUODMRefineHead',
-    'RotatedRepPointsHead', 'SAMRepPointsHead'
+    'RotatedRepPointsHead', 'SAMRepPointsHead', 'ExtremeHeadV2'
 ]

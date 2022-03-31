@@ -102,7 +102,7 @@ class RotatedSingleRoIExtractor(BaseRoIExtractor):
         if isinstance(self.roi_layers[0], ops.RiRoIAlignRotated):
             out_size = nn.modules.utils._pair(self.roi_layers[0].out_size)
         else:
-            out_size = self.roi_layers[0].output_size
+            out_size = (7, 7)#self.roi_layers[0].output_size
         num_levels = len(feats)
         expand_dims = (-1, self.out_channels * out_size[0] * out_size[1])
         if torch.onnx.is_in_onnx_export():
