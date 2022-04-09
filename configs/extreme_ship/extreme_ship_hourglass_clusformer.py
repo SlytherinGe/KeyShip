@@ -21,7 +21,7 @@ model = dict(
         norm_cfg=dict(type='BN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
-        type='ExtremeHeadV2',
+        type='ExtremeHeadV3',
         num_classes=1,
         in_channels=256,
         longside_center_cfg = BASE_CONV_SETTING + \
@@ -30,24 +30,48 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
-        offset_cfg = BASE_CONV_SETTING + \
-                            [('conv',     ('out',     len(OFFSET_TYPE) * 2))],
-        centipital_shift_cfg = BASE_CONV_SETTING + \
-                            [('conv',     ('out',     NUM_CENTRI_CH))],
-        centipital_shift_channels=NUM_CENTRI_CH,
+        clusformer_cfg=dict(
+            num_queries=60,
+            encoder_cfg=dict(type='DetrTransformerEncoder',
+                    num_layers=2,
+                    transformerlayers=dict(
+                        type='BaseTransformerLayer',
+                        attn_cfgs=dict(
+                                type='MultiheadAttention',
+                                embed_dims=256,
+                                num_heads=8,
+                                dropout=0.1),
+                        feedforward_channels=2048,
+                        ffn_dropout=0.1,
+                        operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
+            decoder_cfg=dict(type='TransformerLayerSequence',
+                    num_layers=2,
+                    transformerlayers=dict(
+                        type='BaseTransformerLayer',
+                        attn_cfgs=dict(
+                            type='MultiheadAttention',
+                            embed_dims=256,
+                            num_heads=8,
+                            dropout=0.1),
+                        feedforward_channels=2048,
+                        ffn_dropout=0.1,
+                        operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
+                                        'ffn', 'norm')))),
         regress_ratio=((-1, 2),(-1, 2)),
-        offset_types = OFFSET_TYPE,
         loss_heatmap=dict(
             type='GaussianFocalLoss',
             alpha=2.0,
             gamma=4.0,
             loss_weight=1                     
         ),
-        loss_offsets=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=1
-        ),
-        loss_centripetal_shift=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=0.1),
+        loss_clusformer_cls=dict(
+                    type='CrossEntropyLoss',
+                    use_sigmoid=False,
+                    loss_weight=0.1),
+        loss_clusformer_reg=dict(
+                    type='SmoothL1Loss', 
+                    beta=1.0 / 9.0, 
+                    loss_weight=0.01), 
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
         cache_cfg = dict(
@@ -66,7 +90,7 @@ model = dict(
         ec_conf_thr = 0.01,
         tc_conf_thr = 0.1,
         valid_size_range = [(-1,0), (-1, 2),],
-        score_thr = 0.1,
+        score_thr = 0.0,
         nms_cfg = dict(type='rnms', iou_thr=0.05),
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
         max_per_img=100
@@ -117,7 +141,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=6,
+    samples_per_gpu=8,
     workers_per_gpu=16,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
@@ -141,7 +165,7 @@ load_from = None
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShip/exp48/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp10/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')

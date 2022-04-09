@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/ssdd_voc.py',
+    '../_base_/datasets/ssdd_official.py',
     '../_base_/default_runtime.py'
 ]
 
@@ -198,7 +198,7 @@ lr_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 checkpoint_config = dict(interval=1)
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/RoiTrans/exp2/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/RoiTrans/exp3/'
 # yapf:disable
 log_config = dict(
     interval=10,

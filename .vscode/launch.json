@@ -11,7 +11,11 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["configs/extreme_ship/extreme_ship_hourglass.py"]
+            "args": ["configs/extreme_ship/extreme_ship_hourglass_clusformer.py",
+                    "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test/epoch_1.pth",
+                    "--eval", "mAP"]
         }
     ]
 }
+
+// --work-dir", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test

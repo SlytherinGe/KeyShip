@@ -3,6 +3,7 @@ Author: SlytherinGe
 LastEditTime: 2022-02-21 10:41:18
 '''
 import numpy as np
+from sympy import false
 import torch
 import math
 import cv2
@@ -159,21 +160,26 @@ def transpose_and_gather_feat(feat, ind):
     feat = gather_feat(feat, ind)
     return feat
 
-def keypoints2rbboxes(bboxes, using_geo_center=True):
+def keypoints2rbboxes(bboxes, using_geo_center=True, sc_first=False):
 
     # calculate a
     batch = bboxes.size(0)
-    dy = bboxes[...,7] - bboxes[...,5]
-    dx = bboxes[...,6] - bboxes[...,4]
+    sc_offset = 4 * (1 - int(sc_first))
+    dy = bboxes[...,sc_offset+3] - bboxes[...,sc_offset+1]
+    dx = bboxes[...,sc_offset+2] - bboxes[...,sc_offset]
     a = torch.atan2(dy , dx)
 
     # calculate w, which is the length between shortside centers
-    sc_vec = bboxes[...,4:6] - bboxes[...,6:8]
+    sc_vec = bboxes[...,sc_offset:sc_offset+2] - bboxes[...,sc_offset+2:sc_offset+4]
     w = torch.norm(sc_vec, dim=-1)
 
     # calculate h
-    lc_pts = bboxes[...,:4].view(batch,-1,2,1,2).repeat(1,1,1,2,1)
-    sc_pts = bboxes[...,4:].view(batch,-1,1,2,2).repeat(1,1,2,1,1)
+    if sc_first:
+        lc_pts = bboxes[...,4:].view(batch,-1,2,1,2).repeat(1,1,1,2,1)
+        sc_pts = bboxes[...,:4].view(batch,-1,1,2,2).repeat(1,1,2,1,1)  
+    else:      
+        lc_pts = bboxes[...,:4].view(batch,-1,2,1,2).repeat(1,1,1,2,1)
+        sc_pts = bboxes[...,4:].view(batch,-1,1,2,2).repeat(1,1,2,1,1)
     vec = sc_pts - lc_pts
     vec_3d = torch.zeros((vec.size(0), vec.size(1), vec.size(2), vec.size(3), 3),
                           device=sc_pts.device,

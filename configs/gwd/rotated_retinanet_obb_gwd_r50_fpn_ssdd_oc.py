@@ -5,4 +5,4 @@ model = dict(
         reg_decoded_bbox=True,
         loss_bbox=dict(type='GDLoss', loss_type='gwd', loss_weight=5.0)))
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/GWD/exp1/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/GWD/exp2/'
