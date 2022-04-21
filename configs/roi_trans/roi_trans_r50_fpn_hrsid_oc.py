@@ -1,10 +1,10 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py',
+    '../_base_/datasets/hrsid.py',
     '../_base_/default_runtime.py'
 ]
 
 
-angle_version = 'le135'
+angle_version = 'oc'
 model = dict(
     type='RoITransformer',
     backbone=dict(
@@ -12,7 +12,7 @@ model = dict(
         depth=101,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
-        frozen_stages=1,
+        frozen_stages=-1,
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
@@ -177,8 +177,8 @@ model = dict(
             max_per_img=2000)))
 
 data = dict(
-    samples_per_gpu=16,
-    workers_per_gpu=32,
+    samples_per_gpu=8,
+    workers_per_gpu=16,
     train=dict(version=angle_version),
     val=dict(version=angle_version),
     test=dict(version=angle_version))
@@ -198,7 +198,7 @@ lr_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 checkpoint_config = dict(interval=1)
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/RoiTrans/exp4/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/HRSID/ROITrans/exp1/'
 # yapf:disable
 log_config = dict(
     interval=10,

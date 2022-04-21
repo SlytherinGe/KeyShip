@@ -17,8 +17,9 @@ class HRSIDDataset(CocoDataset):
 
     CLASSES = ('ship',)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, version='oc', *args, **kwargs):
         super().__init__( *args, **kwargs)
+        self.version = version
 
 
     def _parse_ann_info(self, ann_info, with_mask=True):
@@ -111,9 +112,9 @@ class HRSIDDataset(CocoDataset):
         self.coco = COCO(ann_file)
         self.cat_ids = self.coco.getCatIds(catNms=self.CLASSES)
         self.cat2label = {cat_id: i for i, cat_id in enumerate(self.cat_ids)}
-        self.imgIds = self.coco.getImgIds()
+        self.img_ids = self.coco.getImgIds()
         data_infos = []
-        for i in self.imgIds:
+        for i in self.img_ids:
             info = self.coco.loadImgs([i])[0]
             info['filename'] = info['file_name']
             data_infos.append(info)

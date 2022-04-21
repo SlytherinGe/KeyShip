@@ -190,6 +190,8 @@ def keypoints2rbboxes(bboxes, using_geo_center=True, sc_first=False):
     g_len = torch.norm(g_vec, dim=-1)
     dist = area[...,2].abs() / g_len
     h = dist.sum(dim=-1)
+    if h.dim() > w.dim():
+        h = h[...,0]
 
     # calculate x, y
     if using_geo_center:
@@ -417,3 +419,29 @@ def generate_cross_paired_data(paired_attr_a, paired_attr_b, batch_size):
     a_cross = paired_attr_a.view(batch_size, num_a_pair, 1, 2).expand(batch_size, num_a_pair, num_b_pair, 2)
     b_cross = paired_attr_b.view(batch_size, 1, num_b_pair, 2).expand(batch_size, num_a_pair, num_b_pair, 2)
     return a_cross.contiguous(), b_cross.contiguous()
+
+def generate_ec_from_corner_pts(corner_pts):
+    
+    d_12 = torch.square(corner_pts[:,0,0]-corner_pts[:,1,0]) + \
+        torch.square(corner_pts[:,0,1]-corner_pts[:,1,1])
+    d_23 = torch.square(corner_pts[:,1,0]-corner_pts[:,2,0]) + \
+        torch.square(corner_pts[:,1,1]-corner_pts[:,2,1])
+    is_d23_longer = d_12 < d_23
+    num_box = len(is_d23_longer)
+    box_index = torch.arange(num_box, device=corner_pts.device)
+    box_index = torch.hstack((box_index, box_index)) * 4
+    long_side_start_index = torch.as_tensor(is_d23_longer, dtype=torch.int, device=corner_pts.device)
+    long_side_start_index = torch.hstack((long_side_start_index, long_side_start_index + 2))
+    long_side_end_index = (long_side_start_index + 1) % 4
+    short_side_start_index = long_side_end_index
+    short_side_end_index = (short_side_start_index + 1) % 4
+    corner_pts = corner_pts.reshape(-1, 2)
+    long_side_center = (corner_pts[box_index + long_side_start_index,:] +
+                        corner_pts[box_index + long_side_end_index,:]) / 2
+    short_side_center = (corner_pts[box_index + short_side_start_index,:] +
+                        corner_pts[box_index + short_side_end_index,:]) / 2 
+    target_center = (corner_pts[box_index[:num_box], :] + 
+                    corner_pts[box_index[:num_box] + 2, :]) / 2 
+
+    return long_side_center, short_side_center, target_center, num_box
+

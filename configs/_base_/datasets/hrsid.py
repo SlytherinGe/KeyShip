@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'SARDataset'
-data_root = '../datasets/hrsid/'
+data_root = '/media/gejunyao/Disk1/Datasets/hrsid/'
 img_norm_cfg = dict(
     mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
 train_pipeline = [
@@ -37,11 +37,11 @@ data = dict(
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'testsplit/inshore/labelTxt/',
-        img_prefix=data_root + 'testsplit/inshore/images/',
+        ann_file=data_root + 'valsplit/labelTxt',
+        img_prefix=data_root + 'valsplit/images',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         ann_file=data_root + 'testsplit/offshore/labelTxt/',
-        img_prefix=data_root + 'testsplit/offshore/images/',
+        img_prefix=data_root + 'testsplit/all/images_bak',
         pipeline=test_pipeline))
