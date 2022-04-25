@@ -65,13 +65,15 @@ model = dict(
             loss_weight=1                     
         ),
         loss_clusformer_cls=dict(
-                    type='CrossEntropyLoss',
-                    use_sigmoid=False,
-                    loss_weight=0.1),
+                    type='FocalLoss',
+                    use_sigmoid=True,
+                    gamma=2.0,
+                    alpha=0.25,
+                    loss_weight=1.0),
         loss_clusformer_reg=dict(
                     type='SmoothL1Loss', 
                     beta=1.0 / 9.0, 
-                    loss_weight=0.01), 
+                    loss_weight=1.0), 
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
         cache_cfg = dict(
@@ -81,12 +83,13 @@ model = dict(
         ),
         gaussioan_sigma_ratio = (0.1, 0.1),
         assigner=dict(
-            type='MaskHungarianAssigner',
+            type='ExtremeHungarianAssigner',
             cls_cost=dict(type='ClassificationCost', weight=1.0),
             mask_cost=dict(
                 type='FocalLossCost', weight=20.0, binary_input=True),
             dice_cost=dict(
-                type='DiceCost', weight=1.0, pred_act=True, eps=1.0))
+                type='DiceCost', weight=1.0, pred_act=True, eps=1.0),
+            query_cost=dict(type='KeypointL2Cost', weight=10.0))
     ),
     test_cfg = dict(
         cache_cfg = dict(
@@ -112,6 +115,7 @@ train_pipeline = [
     dict(type='RResize', img_scale=(640, 640)),
     dict(
         type='RRandomFlip',
+        # flip_ratio=0.0,
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
         version=angle_version),
@@ -169,22 +173,32 @@ log_config = dict(
 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
+load_from = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp12/epoch_80.pth'
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp11/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
-optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
-optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
+# optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
+# optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
+# optimizer
+optimizer = dict(
+    type='AdamW',
+    lr=0.0008,
+    weight_decay=0.0001,
+    paramwise_cfg=dict(
+        custom_keys={'backbone': dict(lr_mult=0.1, decay_mult=1.0)}))
+optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
-lr_config = dict(
-    policy='cyclic',
-    warmup=None,
-    cyclic_times=1,
-    target_ratio=(10, 1e-2))
-runner = dict(type='EpochBasedRunner', max_epochs=80)
+lr_config = dict(policy='step', step=[100])
+runner = dict(type='EpochBasedRunner', max_epochs=150)
+# lr_config = dict(
+#     policy='cyclic',
+#     warmup=None,
+#     cyclic_times=1,
+#     target_ratio=(10, 1e-2))
+# runner = dict(type='EpochBasedRunner', max_epochs=80)
 checkpoint_config = dict(interval=1)

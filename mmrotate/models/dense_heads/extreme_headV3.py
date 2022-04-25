@@ -59,6 +59,8 @@ class ClusFormer(BaseModule):
 
     def _init_layers(self):
         '''Initialize layers of the clusformer head'''
+        self.enc_proj = nn.Linear(256, 256)
+        self.post_enc_proj_norm = nn.LayerNorm(256)
         self.fc_cls = Linear(256, self.num_classes+1)
         self.ffn_reg = FFN(act_cfg=self.act_cfg)
         self.fc_reg = Linear(256, 8)
@@ -94,8 +96,8 @@ class ClusFormer(BaseModule):
                       following pos info: [SC1_x, SC1_y, SC2_x, SC2_y, LC1_x, LC1_y,
                       LC2_x, LC2_y]
         """
-        ec_vec_embeded = ec_vecs
-        tc_vec_embeded = tc_vecs
+        ec_vec_embeded = self.post_enc_proj_norm(self.enc_proj(ec_vecs))
+        tc_vec_embeded = self.post_enc_proj_norm(self.enc_proj(tc_vecs))
 
         memory = self.encoder(ec_vec_embeded, 
                               key=None, 
@@ -421,6 +423,9 @@ class ExtremeHeadV3(BaseDenseHead):
         self._init_extreme_pts_layers()
     
     def init_weights(self):
+
+        self.clusformer.init_weights()
+
         bias_init = bias_init_with_prob(0.1)
 
         for m in self.longside_center:
@@ -541,9 +546,9 @@ class ExtremeHeadV3(BaseDenseHead):
             lc_heat, sc_heat, tc_heat = all_cls_scores_list[k], all_bbox_preds_list[k], all_center_dets_list[k]
             feat = multi_lvl_feats_list[k]
             with torch.no_grad():
-                lc_heat = torch.where(lc_heat > target_result['gt_longside_center'] * 0.5, lc_heat, target_result['gt_longside_center'])
-                sc_heat = torch.where(sc_heat > target_result['gt_shortside_center'] * 0.5, sc_heat, target_result['gt_shortside_center'])
-                tc_heat = torch.where(tc_heat > target_result['gt_target_center'] * 0.5, tc_heat, target_result['gt_target_center'])
+                lc_heat = torch.where(lc_heat > target_result['gt_longside_center'] * 0.5, lc_heat, target_result['gt_longside_center']* 0.5)
+                sc_heat = torch.where(sc_heat > target_result['gt_shortside_center'] * 0.5, sc_heat, target_result['gt_shortside_center']* 0.5)
+                tc_heat = torch.where(tc_heat > target_result['gt_target_center'] * 0.5, tc_heat, target_result['gt_target_center']* 0.5)
 
             all_cls_scores, all_bbox_preds, all_center_dets = self.forward_transformer_single(lc_heat, sc_heat, tc_heat, feat)
             multi_lvl_cls_scores.append(all_cls_scores)
@@ -551,7 +556,7 @@ class ExtremeHeadV3(BaseDenseHead):
             res = multi_apply(self._get_transformer_targets_single, gt_bboxes_list, gt_labels_list,
                                 gt_masks_list, all_cls_scores, all_bbox_preds, all_center_dets,
                                 img_metas, reg_range=self.regress_ratios[k], feat_shape=feat_shape,
-                                img_shape=img_shape)
+                                pad_shape=img_shape)
             (labels_list, label_weights_list, bbox_targets_list,
             bbox_weights_list, pos_inds_list, neg_inds_list) = res     
             num_total_pos = sum((inds.numel() for inds in pos_inds_list))
@@ -642,23 +647,23 @@ class ExtremeHeadV3(BaseDenseHead):
                                         img_meta,
                                         reg_range,
                                         feat_shape,
-                                        img_shape):
+                                        pad_shape):
 
         # TODO: Reject boxes of unvalid scales   
-        _, _, feat_h, feat_w = feat_shape
-        img_h, img_w, _ = img_shape
-        stride_h, stride_w = img_h / feat_h, img_w / feat_w
-
+        img_h, img_w, _ = img_meta['img_shape']
+        pad_h, pad_w, _ = pad_shape
+        
+        kpt_scaler = all_bbox_preds.new_tensor([img_w, img_h])
         det_kpt_raw_pos = all_bbox_preds.clone()
-
-        det_kpt_raw_pos[...,0::2] = det_kpt_raw_pos[...,0::2] * img_w
-        det_kpt_raw_pos[...,1::2] = det_kpt_raw_pos[...,1::2] * img_h
+        gt_kpts_normalized = gt_bboxes[..., :2] / kpt_scaler
+        det_kpt_raw_pos[...,0::2] = det_kpt_raw_pos[...,0::2] * pad_w
+        det_kpt_raw_pos[...,1::2] = det_kpt_raw_pos[...,1::2] * pad_h
         # prepare gt masks
         scaled_gt_masks = gt_masks.to_tensor(dtype=torch.int32, device=gt_bboxes.device)
         # generate pseudo rbox instance mask for matching
         rboxes_raw_pos = keypoints2rbboxes(det_kpt_raw_pos, sc_first=True)
         num_det = rboxes_raw_pos.size(0)
-        rboxes_instance_mask = np.zeros((num_det, img_h, img_w), np.float)
+        rboxes_instance_mask = np.zeros((num_det, pad_h, pad_w), np.float)
         for k, det_rbox in enumerate(rboxes_raw_pos):
             score_logits = all_cls_scores[k][0]
             x, y, w, h, a = float(det_rbox[0]), float(det_rbox[1]), float(det_rbox[2]), float(det_rbox[3]), float(det_rbox[4])
@@ -668,8 +673,8 @@ class ExtremeHeadV3(BaseDenseHead):
             rboxes_instance_mask[k, ...] = rboxes_instance_mask[k, ...] * float(score_logits)      
         rboxes_instance_mask = torch.from_numpy(rboxes_instance_mask).to(dtype=gt_bboxes.dtype, device=gt_bboxes.device)
         # assign and sample
-        assign_result = self.assigner.assign(all_cls_scores, rboxes_instance_mask, gt_labels,
-                                            scaled_gt_masks, img_meta)
+        assign_result = self.assigner.assign(all_cls_scores, all_center_dets, rboxes_instance_mask, gt_labels,
+                                            gt_kpts_normalized, scaled_gt_masks, img_meta)
         sampling_result = self.sampler.sample(assign_result, all_bbox_preds,
                                                 gt_bboxes)
         pos_inds = sampling_result.pos_inds
@@ -688,9 +693,9 @@ class ExtremeHeadV3(BaseDenseHead):
         bbox_weights[pos_inds] = 1.0
 
         pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes.clone()
-        pos_gt_bboxes_normalized[:, 0] = pos_gt_bboxes_normalized[:, 0] / stride_w
-        pos_gt_bboxes_normalized[:, 1] = pos_gt_bboxes_normalized[:, 1] / stride_h
-        pos_gt_bboxes_normalized[:, 2:4] = pos_gt_bboxes_normalized[:, 2:4] / np.sqrt(stride_h * stride_w)
+        pos_gt_bboxes_normalized[:, 0] = pos_gt_bboxes_normalized[:, 0] / pad_w
+        pos_gt_bboxes_normalized[:, 1] = pos_gt_bboxes_normalized[:, 1] / pad_h
+        pos_gt_bboxes_normalized[:, 2:4] = pos_gt_bboxes_normalized[:, 2:4] / np.sqrt(pad_w * pad_h)
 
         # generate corner pts
         corner_pts = []
@@ -698,13 +703,11 @@ class ExtremeHeadV3(BaseDenseHead):
             x, y, w, h, a = float(gt_rbox[0]), float(gt_rbox[1]), float(gt_rbox[2]), float(gt_rbox[3]), float(gt_rbox[4])
             a = a * 180 / np.pi
             pts = cv2.boxPoints(((x, y), (w, h), a))
-            if w < 1 or h < 1:
-                continue
             corner_pts.append(pts) 
         # calculate edge centers for each rbox
         corner_pts = torch.tensor(corner_pts, dtype=torch.float32, device=gt_bboxes.device)
         if corner_pts.shape[0] is not 0:
-            long_side_center, short_side_center, target_center, num_box = generate_ec_from_corner_pts(corner_pts) 
+            long_side_center, short_side_center, _, num_box = generate_ec_from_corner_pts(corner_pts) 
         # generate targets for clusformer
         long_side_center = long_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
         short_side_center = short_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
@@ -775,7 +778,7 @@ class ExtremeHeadV3(BaseDenseHead):
         bbox_targets = torch.cat(bbox_targets_list, 0)
         bbox_weights = torch.cat(bbox_weights_list, 0)
         # classification loss
-        cls_scores = all_cls_scores.reshape(-1, self.num_classes+1)
+        cls_scores = all_cls_scores.reshape(-1, self.num_classes+1).softmax(-1)
         # construct weighted avg_factor to match with the official DETR repo
         cls_avg_factor = num_total_pos * 1.0 + \
             num_total_neg * 0
