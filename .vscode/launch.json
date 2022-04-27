@@ -11,8 +11,9 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["configs/extreme_ship/extreme_ship_hourglass_clusformer.py",
-                    "--work-dir", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test"]
+            "args": ["configs/extreme_ship/backup.py",
+                    "--work-dir", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test",
+                    "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth"]
         }
     ]
 }

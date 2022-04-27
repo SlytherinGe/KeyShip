@@ -20,8 +20,6 @@ from ..utils import (gen_gaussian_targetR, get_local_maximum,
                      transpose_and_gather_feat, keypoints2rbboxes,
                      sort_valid_gt_bboxes, get_target_map,
                      generate_ec_from_corner_pts)
-
-
 INF = 1e8
 SMALL_NUM = 1e-6
 # multi-thread for saving heatmaps
@@ -48,12 +46,11 @@ class ClusFormer(BaseModule):
 
     def _init_layers(self):
         '''Initialize layers of the clusformer head'''
-        self.dec_proj = nn.Linear(self.embed_dims, self.embed_dims)
         self.enc_proj = nn.Linear(self.embed_dims, self.embed_dims)
         self.post_enc_proj_norm = nn.LayerNorm(self.embed_dims)
         self.fc_cls = Linear(self.embed_dims, self.num_classes+1)
-        self.ffn_reg = FFN(act_cfg=self.act_cfg)
-        self.fc_reg = Linear(self.embed_dims, 8)
+        # self.ffn_reg = FFN(act_cfg=self.act_cfg)
+        # self.fc_reg = Linear(self.embed_dims, 8)
 
     def init_weights(self):
 
@@ -87,7 +84,7 @@ class ClusFormer(BaseModule):
                       LC2_x, LC2_y]
         """
         ec_vec_embeded = self.post_enc_proj_norm(self.enc_proj(ec_vecs))
-        tc_vec_embeded = self.post_enc_proj_norm(self.dec_proj(tc_vecs))
+        tc_vec_embeded = self.post_enc_proj_norm(self.enc_proj(tc_vecs))
 
         memory = self.encoder(ec_vec_embeded, 
                               key=None, 
@@ -100,9 +97,7 @@ class ClusFormer(BaseModule):
                                query_pos=tc_pos_embed)
         out_dec = out_dec.permute(1,0,2)
         all_cls_scores = self.fc_cls(out_dec)
-        all_bbox_preds = self.fc_reg(self.activation(self.ffn_reg(out_dec)))
-        all_bbox_preds = F.leaky_relu(all_bbox_preds, negative_slope=0.01)
-        return all_cls_scores, all_bbox_preds
+        # all_bbox_preds = self.fc_reg(self.activation(self.ffn_reg(out_dec))).sigmoid()
 
 def ThreadSaveCacheFile(dq, train_cache_cfg, test_cache_cfg):
 
@@ -347,7 +342,7 @@ class ExtremeHeadV3(BaseDenseHead):
         # clusformer forward
         batch, _, feat_h, feat_w = x.size()
         mask = x.new_zeros((batch, feat_h, feat_w))
-        pos_embedding = self.positional_encoder(mask).to(x.device).expand_as(x).detach()
+        # pos_embedding = self.positional_encoder(mask).to(x.device).expand_as(x).detach()
         lc_peak = get_local_maximum(lc)
         sc_peak = get_local_maximum(sc)
         tc_peak = get_local_maximum(tc)
@@ -360,19 +355,20 @@ class ExtremeHeadV3(BaseDenseHead):
         peak_feat_sc = transpose_and_gather_feat(x, topk_inds_sc)
         peak_feat_lc = transpose_and_gather_feat(x, topk_inds_lc)
         # get the embeded position for each peak
-        peak_pos_tc = transpose_and_gather_feat(pos_embedding, topk_inds_tc)
-        peak_pos_sc = transpose_and_gather_feat(pos_embedding, topk_inds_sc)
-        peak_pos_lc = transpose_and_gather_feat(pos_embedding, topk_inds_lc)
+        # peak_pos_tc = transpose_and_gather_feat(pos_embedding, topk_inds_tc)
+        # peak_pos_sc = transpose_and_gather_feat(pos_embedding, topk_inds_sc)
+        # peak_pos_lc = transpose_and_gather_feat(pos_embedding, topk_inds_lc)
 
         batched_feat_ec = torch.cat([peak_feat_lc, peak_feat_sc], dim=1).permute(1,0,2)
-        batched_pos_ec = torch.cat([peak_pos_lc, peak_pos_sc], dim=1).permute(1,0,2)
+        # batched_pos_ec = torch.cat([peak_pos_lc, peak_pos_sc], dim=1).permute(1,0,2)
         batched_feat_tc = peak_feat_tc.permute(1,0,2)
-        batched_pos_tc = peak_pos_tc.permute(1,0,2)
+        # batched_pos_tc = peak_pos_tc.permute(1,0,2)
 
         all_center_dets = (torch.stack([topk_xs_tc, topk_ys_tc], dim=-1) + 0.5) / x.new_tensor([feat_w, feat_h])
 
-        all_cls_scores, all_bbox_preds = self.clusformer(batched_feat_ec, batched_feat_tc, batched_pos_ec, batched_pos_tc)
-
+        # all_cls_scores, all_bbox_preds = self.clusformer(batched_feat_ec, batched_feat_tc, None, None)
+        all_cls_scores = self.clusformer(batched_feat_ec, batched_feat_tc, None, None)
+        all_bbox_preds = all_cls_scores.new_zeros(8, 60, 8)
         return all_cls_scores, all_bbox_preds, all_center_dets
 
     def forward_single(self, x):
@@ -439,7 +435,6 @@ class ExtremeHeadV3(BaseDenseHead):
             lc_heat, sc_heat, tc_heat = all_cls_scores_list[k], all_bbox_preds_list[k], all_center_dets_list[k]
             feat = multi_lvl_feats_list[k]
             with torch.no_grad():
-                lc_heat, sc_heat, tc_heat = lc_heat.sigmoid(), sc_heat.sigmoid(), tc_heat.sigmoid()
                 lc_heat = torch.where(lc_heat > target_result['gt_longside_center'] * 0.5, lc_heat, target_result['gt_longside_center']* 0.5)
                 sc_heat = torch.where(sc_heat > target_result['gt_shortside_center'] * 0.5, sc_heat, target_result['gt_shortside_center']* 0.5)
                 tc_heat = torch.where(tc_heat > target_result['gt_target_center'] * 0.5, tc_heat, target_result['gt_target_center']* 0.5)
@@ -547,28 +542,28 @@ class ExtremeHeadV3(BaseDenseHead):
         img_h, img_w, _ = img_meta['img_shape']
         pad_h, pad_w, _ = pad_shape
         
-        kpt_scaler = all_bbox_preds.new_tensor([max(img_h, img_w)])
+        kpt_scaler = all_bbox_preds.new_tensor([img_w, img_h])
         det_kpt_raw_pos = all_bbox_preds.clone()
         gt_kpts_normalized = gt_bboxes[..., :2] / kpt_scaler
-        # det_kpt_raw_pos[...,0::2] = det_kpt_raw_pos[...,0::2] * pad_w
-        # det_kpt_raw_pos[...,1::2] = det_kpt_raw_pos[...,1::2] * pad_h
-        # # prepare gt masks
-        # scaled_gt_masks = gt_masks.to_tensor(dtype=torch.int32, device=gt_bboxes.device)
-        # # generate pseudo rbox instance mask for matching
-        # rboxes_raw_pos = keypoints2rbboxes(det_kpt_raw_pos, sc_first=True)
-        num_det = all_cls_scores.size(0)
-        # rboxes_instance_mask = np.zeros((num_det, pad_h, pad_w), np.float)
-        # for k, det_rbox in enumerate(rboxes_raw_pos):
-        #     score_logits = all_cls_scores[k][0]
-        #     x, y, w, h, a = float(det_rbox[0]), float(det_rbox[1]), float(det_rbox[2]), float(det_rbox[3]), float(det_rbox[4])
-        #     pts = cv2.boxPoints(((x, y), (w, h), a))  
-        #     pts = np.int0(pts)
-        #     rboxes_instance_mask[k, ...] = cv2.drawContours(rboxes_instance_mask[k], [pts], -1, 1, -1)
-        #     rboxes_instance_mask[k, ...] = rboxes_instance_mask[k, ...] * float(score_logits)      
-        # rboxes_instance_mask = torch.from_numpy(rboxes_instance_mask).to(dtype=gt_bboxes.dtype, device=gt_bboxes.device)
+        det_kpt_raw_pos[...,0::2] = det_kpt_raw_pos[...,0::2] * pad_w
+        det_kpt_raw_pos[...,1::2] = det_kpt_raw_pos[...,1::2] * pad_h
+        # prepare gt masks
+        scaled_gt_masks = gt_masks.to_tensor(dtype=torch.int32, device=gt_bboxes.device)
+        # generate pseudo rbox instance mask for matching
+        rboxes_raw_pos = keypoints2rbboxes(det_kpt_raw_pos, sc_first=True)
+        num_det = rboxes_raw_pos.size(0)
+        rboxes_instance_mask = np.zeros((num_det, pad_h, pad_w), np.float)
+        for k, det_rbox in enumerate(rboxes_raw_pos):
+            score_logits = all_cls_scores[k][0]
+            x, y, w, h, a = float(det_rbox[0]), float(det_rbox[1]), float(det_rbox[2]), float(det_rbox[3]), float(det_rbox[4])
+            pts = cv2.boxPoints(((x, y), (w, h), a))  
+            pts = np.int0(pts)
+            rboxes_instance_mask[k, ...] = cv2.drawContours(rboxes_instance_mask[k], [pts], -1, 1, -1)
+            rboxes_instance_mask[k, ...] = rboxes_instance_mask[k, ...] * float(score_logits)      
+        rboxes_instance_mask = torch.from_numpy(rboxes_instance_mask).to(dtype=gt_bboxes.dtype, device=gt_bboxes.device)
         # assign and sample
-        assign_result = self.assigner.assign(all_cls_scores, all_center_dets, None, gt_labels,
-                                            gt_kpts_normalized, None, img_meta)
+        assign_result = self.assigner.assign(all_cls_scores, all_center_dets, rboxes_instance_mask, gt_labels,
+                                            gt_kpts_normalized, scaled_gt_masks, img_meta)
         sampling_result = self.sampler.sample(assign_result, all_bbox_preds,
                                                 gt_bboxes)
         pos_inds = sampling_result.pos_inds
@@ -586,40 +581,41 @@ class ExtremeHeadV3(BaseDenseHead):
         bbox_weights = torch.zeros_like(all_bbox_preds)
         bbox_weights[pos_inds] = 1.0
 
-        pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes.clone()
-        normalize_factor = pos_gt_bboxes_normalized.new_tensor([pad_w, pad_h, np.sqrt(pad_w * pad_h), np.sqrt(pad_w * pad_h)])
-        pos_gt_bboxes_normalized[:,:4] = pos_gt_bboxes_normalized[:,:4] / normalize_factor
+        # pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes.clone()
+        # pos_gt_bboxes_normalized[:, 0] = pos_gt_bboxes_normalized[:, 0] / pad_w
+        # pos_gt_bboxes_normalized[:, 1] = pos_gt_bboxes_normalized[:, 1] / pad_h
+        # pos_gt_bboxes_normalized[:, 2:4] = pos_gt_bboxes_normalized[:, 2:4] / np.sqrt(pad_w * pad_h)
 
-        # generate corner pts
-        corner_pts = []
-        for gt_rbox in pos_gt_bboxes_normalized:
-            x, y, w, h, a = float(gt_rbox[0]), float(gt_rbox[1]), float(gt_rbox[2]), float(gt_rbox[3]), float(gt_rbox[4])
-            a = a * 180 / np.pi
-            pts = cv2.boxPoints(((x, y), (w, h), a))
-            corner_pts.append(pts) 
-        # calculate edge centers for each rbox
-        corner_pts = torch.tensor(corner_pts, dtype=torch.float32, device=gt_bboxes.device)
-        if corner_pts.shape[0] is not 0:
-            long_side_center, short_side_center, _, num_box = generate_ec_from_corner_pts(corner_pts) 
-        # generate targets for clusformer
-        long_side_center = long_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
-        short_side_center = short_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
-        valid_bbox_pred = all_bbox_preds[pos_inds].view(-1, 4, 2)
-        # determine the relation between a pair of ec
-        valid_bbox_lc = long_side_center
-        valid_bbox_sc = short_side_center
-        valid_bbox_lc_r = torch.flip(valid_bbox_lc, [1])
-        valid_bbox_sc_r = torch.flip(valid_bbox_sc, [1])
-        gt_lc0_dist = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc, dim=-1).sum(-1)
-        gt_lc0_dist_r = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc_r, dim=-1).sum(-1)
-        gt_sc0_dist = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc, dim=-1).sum(-1)
-        gt_sc0_dist_r = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc_r, dim=-1).sum(-1)
-        target_lc = torch.where((gt_lc0_dist < gt_lc0_dist_r).view(-1,1,1), valid_bbox_lc, valid_bbox_lc_r)
-        target_sc = torch.where((gt_sc0_dist < gt_sc0_dist_r).view(-1,1,1), valid_bbox_sc, valid_bbox_sc_r)            
-        target_bboxes = torch.cat([target_lc, target_sc], dim=1)
+        # # generate corner pts
+        # corner_pts = []
+        # for gt_rbox in pos_gt_bboxes_normalized:
+        #     x, y, w, h, a = float(gt_rbox[0]), float(gt_rbox[1]), float(gt_rbox[2]), float(gt_rbox[3]), float(gt_rbox[4])
+        #     a = a * 180 / np.pi
+        #     pts = cv2.boxPoints(((x, y), (w, h), a))
+        #     corner_pts.append(pts) 
+        # # calculate edge centers for each rbox
+        # corner_pts = torch.tensor(corner_pts, dtype=torch.float32, device=gt_bboxes.device)
+        # if corner_pts.shape[0] is not 0:
+        #     long_side_center, short_side_center, _, num_box = generate_ec_from_corner_pts(corner_pts) 
+        # # generate targets for clusformer
+        # long_side_center = long_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
+        # short_side_center = short_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
+        # valid_bbox_pred = all_bbox_preds[pos_inds].view(-1, 4, 2)
+        # # determine the relation between a pair of ec
+        # valid_bbox_lc = long_side_center
+        # valid_bbox_sc = short_side_center
+        # valid_bbox_lc_r = torch.flip(valid_bbox_lc, [1])
+        # valid_bbox_sc_r = torch.flip(valid_bbox_sc, [1])
+        # gt_lc0_dist = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc, dim=-1).sum(-1)
+        # gt_lc0_dist_r = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc_r, dim=-1).sum(-1)
+        # gt_sc0_dist = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc, dim=-1).sum(-1)
+        # gt_sc0_dist_r = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc_r, dim=-1).sum(-1)
+        # target_lc = torch.where((gt_lc0_dist < gt_lc0_dist_r).view(-1,1,1), valid_bbox_lc, valid_bbox_lc_r)
+        # target_sc = torch.where((gt_sc0_dist < gt_sc0_dist_r).view(-1,1,1), valid_bbox_sc, valid_bbox_sc_r)            
+        # target_bboxes = torch.cat([target_lc, target_sc], dim=1)
 
-        pos_gt_bboxes_targets = target_bboxes.view(-1, 8)
-        bbox_targets[pos_inds] = pos_gt_bboxes_targets     
+        # pos_gt_bboxes_targets = target_bboxes.view(-1, 8)
+        # bbox_targets[pos_inds] = pos_gt_bboxes_targets     
            
         return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
                 neg_inds)
@@ -681,14 +677,14 @@ class ExtremeHeadV3(BaseDenseHead):
 
         # Compute the average number of gt boxes across all gpus, for
         # normalization purposes
-        num_total_pos = clusformer_cls_loss.new_tensor([num_total_pos])
-        num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1).item()
-        bbox_preds = all_bbox_preds.reshape(-1, 8)
-        clusformer_reg_loss = self.loss_clusformer_reg(bbox_preds, 
-                bbox_targets, bbox_weights, avg_factor=num_total_pos)
+        # num_total_pos = clusformer_cls_loss.new_tensor([num_total_pos])
+        # num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1).item()
+        # bbox_preds = all_bbox_preds.reshape(-1, 8)
+        # clusformer_reg_loss = self.loss_clusformer_reg(bbox_preds, 
+        #         bbox_targets, bbox_weights, avg_factor=num_total_pos)
 
-        return clusformer_reg_loss / 2, clusformer_cls_loss / 2
-        # return clusformer_cls_loss,
+        # return clusformer_reg_loss / 2, clusformer_cls_loss / 2
+        return clusformer_cls_loss,
 
     def loss(self,
              longside_center_heats,
@@ -718,16 +714,7 @@ class ExtremeHeadV3(BaseDenseHead):
                                 target_center_heats,
                                 targets)
 
-        # clusformer_cls_loss, = multi_apply(self.loss_clusformer_single,
-        #                         multi_lvl_cls_scores, 
-        #                         multi_lvl_bbox_preds,
-        #                         targets)
-
-        # loss_dict = dict(lc_det_loss=lc_det_loss,
-        #                  sc_det_loss=sc_det_loss,
-        #                  tc_det_loss=tc_det_loss,
-        #                  clusformer_cls_loss=clusformer_cls_loss)
-        clusformer_reg_loss, clusformer_cls_loss = multi_apply(self.loss_clusformer_single,
+        clusformer_cls_loss, = multi_apply(self.loss_clusformer_single,
                                 multi_lvl_cls_scores, 
                                 multi_lvl_bbox_preds,
                                 targets)
@@ -735,8 +722,17 @@ class ExtremeHeadV3(BaseDenseHead):
         loss_dict = dict(lc_det_loss=lc_det_loss,
                          sc_det_loss=sc_det_loss,
                          tc_det_loss=tc_det_loss,
-                         clusformer_cls_loss=clusformer_cls_loss,
-                         clusformer_reg_loss=clusformer_reg_loss)
+                         clusformer_cls_loss=clusformer_cls_loss)
+        # clusformer_reg_loss, clusformer_cls_loss = multi_apply(self.loss_clusformer_single,
+        #                         multi_lvl_cls_scores, 
+        #                         multi_lvl_bbox_preds,
+        #                         targets)
+
+        # loss_dict = dict(lc_det_loss=lc_det_loss,
+        #                  sc_det_loss=sc_det_loss,
+        #                  tc_det_loss=tc_det_loss,
+        #                  clusformer_cls_loss=clusformer_cls_loss,
+        #                  clusformer_reg_loss=clusformer_reg_loss)
 
         if self.train_cache_cfg.get('save_target', False):
             data_dict = dict(
@@ -814,9 +810,6 @@ class ExtremeHeadV3(BaseDenseHead):
         det_rboxes = torch.cat(all_lvl_rboxes, dim=1)
         det_scores = torch.cat(all_lvl_bbox_scores, dim=1)
         det_clses = torch.cat(all_lvl_bbox_clses, dim=1)
-
-        # clamp bbox results
-        det_rboxes.clamp_(0, 1)
 
         valid_score = det_scores > 0
         keep_ind = valid_score[...,0]

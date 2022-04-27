@@ -4,9 +4,7 @@ _base_ = [
 
 BASE_CONV_SETTING = [('conv',     ('default', 256)),
                     ('conv',     ('default', 256))]
-OFFSET_TYPE = ['sc', 'lc']
 NUM_CLASS=1
-NUM_CENTRI_CH=2
 INF = 1e8
 angle_version = 'oc'
 # model settings
@@ -67,6 +65,7 @@ model = dict(
         loss_clusformer_cls=dict(
                     type='FocalLoss',
                     use_sigmoid=True,
+                    activated=True,
                     gamma=2.0,
                     alpha=0.25,
                     loss_weight=1.0),
@@ -84,11 +83,11 @@ model = dict(
         gaussioan_sigma_ratio = (0.1, 0.1),
         assigner=dict(
             type='ExtremeHungarianAssigner',
-            cls_cost=dict(type='ClassificationCost', weight=1.0),
+            cls_cost=dict(type='ClassificationCost', weight=0),
             mask_cost=dict(
-                type='FocalLossCost', weight=20.0, binary_input=True),
+                type='FocalLossCost', weight=0, binary_input=True),
             dice_cost=dict(
-                type='DiceCost', weight=1.0, pred_act=True, eps=1.0),
+                type='DiceCost', weight=0, pred_act=True, eps=0),
             query_cost=dict(type='KeypointL2Cost', weight=10.0))
     ),
     test_cfg = dict(
@@ -187,7 +186,7 @@ evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
 optimizer = dict(
     type='AdamW',
-    lr=0.0008,
+    lr=0.001,
     weight_decay=0.0001,
     paramwise_cfg=dict(
         custom_keys={'backbone': dict(lr_mult=0.1, decay_mult=1.0)}))
@@ -200,5 +199,5 @@ runner = dict(type='EpochBasedRunner', max_epochs=150)
 #     warmup=None,
 #     cyclic_times=1,
 #     target_ratio=(10, 1e-2))
-# runner = dict(type='EpochBasedRunner', max_epochs=80)
+# runner = dict(type='EpochBasedRunner', max_epochs=150)
 checkpoint_config = dict(interval=1)
