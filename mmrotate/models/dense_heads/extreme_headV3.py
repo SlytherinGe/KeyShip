@@ -101,6 +101,7 @@ class ClusFormer(BaseModule):
         out_dec = out_dec.permute(1,0,2)
         all_cls_scores = self.fc_cls(out_dec)
         all_bbox_preds = self.fc_reg(self.activation(self.ffn_reg(out_dec)))
+        # all_bbox_preds = F.elu(all_bbox_preds, alpha=0.01)
         all_bbox_preds = F.leaky_relu(all_bbox_preds, negative_slope=0.01)
         return all_cls_scores, all_bbox_preds
 
@@ -144,6 +145,9 @@ def ThreadSaveCacheFile(dq, train_cache_cfg, test_cache_cfg):
             mmcv.dump(save_dict, saved_file + '.pkl')
 
         if save_b is not None:
+            for key, values in save_b.items():
+                for k, value in enumerate(values):
+                    save_b[key][k] = value.cpu()
             img_meta = img_metas[0]
             filename = img_meta['filename']
             filename = os.path.basename(filename).split('.')[0]
@@ -178,6 +182,7 @@ class ExtremeHeadV3(BaseDenseHead):
                                 use_sigmoid=False,
                                 loss_weight=1.0),
                  loss_clusformer_reg=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=5.0), 
+                 loss_clusformer_ctx=None,
                  train_cfg=None,
                  test_cfg=None,
                  norm_cfg=None,
@@ -191,6 +196,7 @@ class ExtremeHeadV3(BaseDenseHead):
         self.loss_heatmap = None if loss_heatmap == None else build_loss(loss_heatmap)
         self.loss_clusformer_cls = None if loss_clusformer_cls == None else build_loss(loss_clusformer_cls)
         self.loss_clusformer_reg = None if loss_clusformer_reg == None else build_loss(loss_clusformer_reg)
+        self.loss_clusformer_ctx = None if loss_clusformer_ctx == None else build_loss(loss_clusformer_ctx)
 
         self.train_cfg = train_cfg if train_cfg is not None else dict()
         self.test_cfg = test_cfg
@@ -448,15 +454,16 @@ class ExtremeHeadV3(BaseDenseHead):
             multi_lvl_cls_scores.append(all_cls_scores)
             multi_lvl_bbox_preds.append(all_bbox_preds)
             res = multi_apply(self._get_transformer_targets_single, gt_bboxes_list, gt_labels_list,
-                                gt_masks_list, all_cls_scores, all_bbox_preds, all_center_dets,
+                                gt_masks_list, all_cls_scores, all_bbox_preds, all_center_dets, target_result['gt_target_center'],
                                 img_metas, reg_range=self.regress_ratios[k], feat_shape=feat_shape,
                                 pad_shape=img_shape)
             (labels_list, label_weights_list, bbox_targets_list,
-            bbox_weights_list, pos_inds_list, neg_inds_list) = res     
+            bbox_weights_list, pos_inds_list, neg_inds_list, center_pos) = res     
+            # num_total_pos = sum((len(gt_box) for gt_box in gt_bboxes_list))
             num_total_pos = sum((inds.numel() for inds in pos_inds_list))
             num_total_neg = sum((inds.numel() for inds in neg_inds_list))                           
             target_result.update(clusformer_target=(labels_list, label_weights_list, bbox_targets_list,
-                bbox_weights_list, num_total_pos, num_total_neg))
+                bbox_weights_list, num_total_pos, num_total_neg, center_pos))
             multi_lvl_feat_targets.append(target_result)
 
         return multi_lvl_feat_targets, multi_lvl_cls_scores, multi_lvl_bbox_preds
@@ -538,6 +545,7 @@ class ExtremeHeadV3(BaseDenseHead):
                                         all_cls_scores, 
                                         all_bbox_preds,
                                         all_center_dets,
+                                        target_center_heat,
                                         img_meta,
                                         reg_range,
                                         feat_shape,
@@ -546,14 +554,19 @@ class ExtremeHeadV3(BaseDenseHead):
         # TODO: Reject boxes of unvalid scales   
         img_h, img_w, _ = img_meta['img_shape']
         pad_h, pad_w, _ = pad_shape
-        
+        # _, _, feat_h, feat_w = feat_shape
+        # # sample target center to get loss weights
+        # feat_scaler = all_center_dets.new_tensor([feat_w, feat_h])
+        # all_center_sample_inds = (all_center_dets * feat_scaler).long()
+        # all_center_weights = target_center_heat[0,all_center_sample_inds[:,1],all_center_sample_inds[:,0]]
+
         kpt_scaler = all_bbox_preds.new_tensor([max(img_h, img_w)])
-        det_kpt_raw_pos = all_bbox_preds.clone()
+        # det_kpt_raw_pos = all_bbox_preds.clone()
         gt_kpts_normalized = gt_bboxes[..., :2] / kpt_scaler
         # det_kpt_raw_pos[...,0::2] = det_kpt_raw_pos[...,0::2] * pad_w
         # det_kpt_raw_pos[...,1::2] = det_kpt_raw_pos[...,1::2] * pad_h
         # # prepare gt masks
-        # scaled_gt_masks = gt_masks.to_tensor(dtype=torch.int32, device=gt_bboxes.device)
+        scaled_gt_masks = gt_masks.to_tensor(dtype=torch.int32, device=gt_bboxes.device)
         # # generate pseudo rbox instance mask for matching
         # rboxes_raw_pos = keypoints2rbboxes(det_kpt_raw_pos, sc_first=True)
         num_det = all_cls_scores.size(0)
@@ -568,7 +581,7 @@ class ExtremeHeadV3(BaseDenseHead):
         # rboxes_instance_mask = torch.from_numpy(rboxes_instance_mask).to(dtype=gt_bboxes.dtype, device=gt_bboxes.device)
         # assign and sample
         assign_result = self.assigner.assign(all_cls_scores, all_center_dets, None, gt_labels,
-                                            gt_kpts_normalized, None, img_meta)
+                                            gt_kpts_normalized, scaled_gt_masks, img_meta)
         sampling_result = self.sampler.sample(assign_result, all_bbox_preds,
                                                 gt_bboxes)
         pos_inds = sampling_result.pos_inds
@@ -584,7 +597,8 @@ class ExtremeHeadV3(BaseDenseHead):
         # bbox targets
         bbox_targets = torch.zeros_like(all_bbox_preds)
         bbox_weights = torch.zeros_like(all_bbox_preds)
-        bbox_weights[pos_inds] = 1.0
+        bbox_weights[pos_inds] = 1.0 #* all_center_weights[pos_inds].unsqueeze(1)
+        # label_weights[pos_inds] = label_weights[pos_inds] * all_center_weights[pos_inds]
 
         pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes.clone()
         normalize_factor = pos_gt_bboxes_normalized.new_tensor([pad_w, pad_h, np.sqrt(pad_w * pad_h), np.sqrt(pad_w * pad_h)])
@@ -614,15 +628,16 @@ class ExtremeHeadV3(BaseDenseHead):
         gt_lc0_dist_r = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc_r, dim=-1).sum(-1)
         gt_sc0_dist = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc, dim=-1).sum(-1)
         gt_sc0_dist_r = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc_r, dim=-1).sum(-1)
+        # BUG: box pred should be sc first
         target_lc = torch.where((gt_lc0_dist < gt_lc0_dist_r).view(-1,1,1), valid_bbox_lc, valid_bbox_lc_r)
         target_sc = torch.where((gt_sc0_dist < gt_sc0_dist_r).view(-1,1,1), valid_bbox_sc, valid_bbox_sc_r)            
-        target_bboxes = torch.cat([target_lc, target_sc], dim=1)
+        target_bboxes = torch.cat([target_sc, target_lc], dim=1)
 
         pos_gt_bboxes_targets = target_bboxes.view(-1, 8)
         bbox_targets[pos_inds] = pos_gt_bboxes_targets     
            
         return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
-                neg_inds)
+                neg_inds, all_center_dets)
 
 
     def loss_heat_single(self, lc, sc, tc, targets):
@@ -664,11 +679,12 @@ class ExtremeHeadV3(BaseDenseHead):
     def loss_clusformer_single(self, all_cls_scores, all_bbox_preds, target):
 
         (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
-         num_total_pos, num_total_neg) = target['clusformer_target']
+         num_total_pos, num_total_neg, center_pos_list) = target['clusformer_target']
 
         labels = torch.cat(labels_list, 0)
         label_weights = torch.cat(label_weights_list, 0)
         bbox_targets = torch.cat(bbox_targets_list, 0)
+        center_targets = torch.cat(center_pos_list, 0)
         bbox_weights = torch.cat(bbox_weights_list, 0)
         # classification loss
         cls_scores = all_cls_scores.reshape(-1, self.num_classes+1).softmax(-1)
@@ -687,8 +703,20 @@ class ExtremeHeadV3(BaseDenseHead):
         clusformer_reg_loss = self.loss_clusformer_reg(bbox_preds, 
                 bbox_targets, bbox_weights, avg_factor=num_total_pos)
 
-        return clusformer_reg_loss / 2, clusformer_cls_loss / 2
-        # return clusformer_cls_loss,
+        if self.loss_clusformer_ctx is not None:
+            # clamp the predicted bboxes
+            batch, num_box, _ = all_bbox_preds.shape
+            pseudo_ctx = all_bbox_preds.new_zeros((batch, num_box, 2))
+            # all_bbox_preds_clamp = all_bbox_preds.clamp(0., 1.)
+            pseudo_ctx[..., 0] = all_bbox_preds[...,0::2].mean(dim=-1)
+            pseudo_ctx[..., 1] = all_bbox_preds[...,1::2].mean(dim=-1)
+            pseudo_ctx = pseudo_ctx.reshape(-1, 2)
+            clusformer_ctx_loss = self.loss_clusformer_ctx(pseudo_ctx, 
+                        center_targets, avg_factor=batch*num_box)
+        else:
+            clusformer_ctx_loss = None
+
+        return clusformer_reg_loss, clusformer_cls_loss, clusformer_ctx_loss
 
     def loss(self,
              longside_center_heats,
@@ -718,16 +746,7 @@ class ExtremeHeadV3(BaseDenseHead):
                                 target_center_heats,
                                 targets)
 
-        # clusformer_cls_loss, = multi_apply(self.loss_clusformer_single,
-        #                         multi_lvl_cls_scores, 
-        #                         multi_lvl_bbox_preds,
-        #                         targets)
-
-        # loss_dict = dict(lc_det_loss=lc_det_loss,
-        #                  sc_det_loss=sc_det_loss,
-        #                  tc_det_loss=tc_det_loss,
-        #                  clusformer_cls_loss=clusformer_cls_loss)
-        clusformer_reg_loss, clusformer_cls_loss = multi_apply(self.loss_clusformer_single,
+        clusformer_reg_loss, clusformer_cls_loss, clusformer_ctx_loss = multi_apply(self.loss_clusformer_single,
                                 multi_lvl_cls_scores, 
                                 multi_lvl_bbox_preds,
                                 targets)
@@ -737,6 +756,9 @@ class ExtremeHeadV3(BaseDenseHead):
                          tc_det_loss=tc_det_loss,
                          clusformer_cls_loss=clusformer_cls_loss,
                          clusformer_reg_loss=clusformer_reg_loss)
+
+        if clusformer_ctx_loss is not None:
+            loss_dict.update(dict(clusformer_ctx_loss=clusformer_ctx_loss))
 
         if self.train_cache_cfg.get('save_target', False):
             data_dict = dict(
@@ -800,6 +822,7 @@ class ExtremeHeadV3(BaseDenseHead):
         
         all_lvl_rboxes = []
         for bbox_kpts in all_lvl_bbox_kpts:
+            bbox_kpts = bbox_kpts.clamp(0, 1)
             rboxes = keypoints2rbboxes(bbox_kpts, sc_first=True)
             all_lvl_rboxes.append(rboxes)
 
@@ -814,9 +837,6 @@ class ExtremeHeadV3(BaseDenseHead):
         det_rboxes = torch.cat(all_lvl_rboxes, dim=1)
         det_scores = torch.cat(all_lvl_bbox_scores, dim=1)
         det_clses = torch.cat(all_lvl_bbox_clses, dim=1)
-
-        # clamp bbox results
-        det_rboxes.clamp_(0, 1)
 
         valid_score = det_scores > 0
         keep_ind = valid_score[...,0]

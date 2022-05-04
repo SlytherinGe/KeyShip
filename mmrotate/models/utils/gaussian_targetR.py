@@ -445,3 +445,35 @@ def generate_ec_from_corner_pts(corner_pts):
 
     return long_side_center, short_side_center, target_center, num_box
 
+
+def generate_center_pointer_map(tc:torch.Tensor, sc, lc, ctx_ptr_map:torch.Tensor, gt_ptr_map:torch.Tensor):
+    '''
+        tc: tensor [x, y]
+        sc: tuple|list(tesor, tensor)
+        lc: tuple|list(tesor, tensor)
+        ctx_ptr_map: tensor [8, feat_h, feat_w]
+        gt_ptr_map: tensor [8, feat_h, feat_w]
+    '''
+    feat_h, feat_w = ctx_ptr_map.shape[-2:]
+    tc_ind = tc.long()
+    if tc_ind[0] >= feat_w or tc_ind[1] >= feat_h or tc_ind.lt(0).sum().gt(0):
+        return gt_ptr_map
+    tc_ctx_ptr = ctx_ptr_map[:, tc_ind[1], tc_ind[0]].view(4, 2)
+    tc_ptr_res = tc_ind[None] + tc_ctx_ptr + 0.5
+    all_sc_pos = torch.stack(sc)
+    all_lc_pos = torch.stack(lc)
+    all_sc_pos_r = torch.flipud(all_sc_pos)
+    all_lc_pos_r = torch.flipud(all_lc_pos)
+    gt_sc0_dist = torch.norm(tc_ptr_res[:2,:]-all_sc_pos, dim=-1).sum(-1)
+    gt_sc0_dist_r = torch.norm(tc_ptr_res[:2,:]-all_sc_pos_r, dim=-1).sum(-1)
+    gt_lc0_dist = torch.norm(tc_ptr_res[2:,:]-all_lc_pos, dim=-1).sum(-1)
+    gt_lc0_dist_r = torch.norm(tc_ptr_res[2:,:]-all_lc_pos_r, dim=-1).sum(-1)    
+
+    target_sc = torch.where((gt_sc0_dist < gt_sc0_dist_r).unsqueeze(-1), all_sc_pos, all_sc_pos_r)
+    target_lc = torch.where((gt_lc0_dist < gt_lc0_dist_r).unsqueeze(-1), all_lc_pos, all_lc_pos_r)
+    target_ec = torch.cat([target_sc, target_lc], dim=0)
+    target_ptr = (target_ec - tc_ind[None] - 0.5).view(-1)
+    gt_ptr_map[:, tc_ind[1], tc_ind[0]] = target_ptr
+
+    return gt_ptr_map
+

@@ -12,7 +12,8 @@ from .gaussian_targetR import (gen_gaussian_targetR, get_local_maximum,
                                generate_self_conjugate_data, 
                                generate_cross_paired_data,
                                set_dual_centripetal_shifts,
-                               generate_ec_from_corner_pts)
+                               generate_ec_from_corner_pts,
+                               generate_center_pointer_map)
 
 __all__ = [
     'ORConv2d', 'RotationInvariantPooling', 'ennConv', 'ennReLU', 'ennAvgPool',
@@ -29,4 +30,5 @@ __all__.extend(['gen_gaussian_targetR', 'get_local_maximum',
                 'generate_self_conjugate_data', 
                 'generate_cross_paired_data',
                 'set_dual_centripetal_shifts',
-                'generate_ec_from_corner_pts'])
+                'generate_ec_from_corner_pts',
+                'generate_center_pointer_map'])

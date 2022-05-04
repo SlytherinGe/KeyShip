@@ -19,8 +19,8 @@ model = dict(
         norm_cfg=dict(type='BN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
-        type='ExtremeHeadV3',
-        num_classes=1,
+        type='ExtremeHeadV4',
+        num_classes=NUM_CLASS,
         in_channels=256,
         longside_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
@@ -28,33 +28,8 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
-        clusformer_cfg=dict(
-            num_queries=60,
-            encoder_cfg=dict(type='DetrTransformerEncoder',
-                    num_layers=2,
-                    transformerlayers=dict(
-                        type='BaseTransformerLayer',
-                        attn_cfgs=dict(
-                                type='MultiheadAttention',
-                                embed_dims=256,
-                                num_heads=8,
-                                dropout=0.1),
-                        feedforward_channels=2048,
-                        ffn_dropout=0.1,
-                        operation_order=('self_attn', 'norm', 'ffn', 'norm'))),
-            decoder_cfg=dict(type='TransformerLayerSequence',
-                    num_layers=2,
-                    transformerlayers=dict(
-                        type='BaseTransformerLayer',
-                        attn_cfgs=dict(
-                            type='MultiheadAttention',
-                            embed_dims=256,
-                            num_heads=8,
-                            dropout=0.1),
-                        feedforward_channels=2048,
-                        ffn_dropout=0.1,
-                        operation_order=('self_attn', 'norm', 'cross_attn', 'norm',
-                                        'ffn', 'norm')))),
+        center_pointer_cfg = BASE_CONV_SETTING + \
+                            [('conv',     ('out',     8))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
             type='GaussianFocalLoss',
@@ -62,23 +37,9 @@ model = dict(
             gamma=4.0,
             loss_weight=1                     
         ),
-        loss_clusformer_cls=dict(
-                    type='FocalLoss',
-                    use_sigmoid=True,
-                    activated=True,
-                    gamma=2.0,
-                    alpha=0.25,
-                    loss_weight=1.0),
-        # loss_clusformer_reg=dict(
-        #             type='SmoothL1Loss', 
-        #             beta=1.0 / 9.0, 
-        #             loss_weight=5.0), 
-        loss_clusformer_reg=dict(
-                    type='L1Loss', 
-                    loss_weight=5.0), 
-        loss_clusformer_ctx=dict(
-                    type='L1Loss', 
-                    loss_weight=1.0), 
+        loss_pointer=dict(
+            type='SmoothL1Loss', beta=1.0, loss_weight=1
+        ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
         cache_cfg = dict(
@@ -86,16 +47,7 @@ model = dict(
             save_target=False,
             save_output=False
         ),
-        gaussioan_sigma_ratio = (0.1, 0.1),
-        assigner=dict(
-            type='ExtremeHungarianAssigner',
-            # type='Point2MaskAssigner',
-            cls_cost=dict(type='ClassificationCost', weight=0),
-            mask_cost=dict(
-                type='FocalLossCost', weight=0, binary_input=True),
-            dice_cost=dict(
-                type='DiceCost', weight=0, pred_act=True, eps=0),
-            query_cost=dict(type='KeypointL2Cost', weight=10.0))
+        gaussioan_sigma_ratio = (0.1, 0.1)
     ),
     test_cfg = dict(
         cache_cfg = dict(
@@ -138,9 +90,9 @@ train_pipeline = [
     dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size=(640, 640)),
-    dict(type='InstanceMaskGenerator'),
+    # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels', 'gt_masks'])
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
 
 test_pipeline = [
@@ -179,11 +131,11 @@ log_config = dict(
 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_150.pth'
+load_from = None
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp1/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
@@ -199,12 +151,12 @@ optimizer = dict(
         custom_keys={'backbone': dict(lr_mult=0.1, decay_mult=1.0)}))
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
-lr_config = dict(policy='step', step=[150])
-runner = dict(type='EpochBasedRunner', max_epochs=300)
+lr_config = dict(policy='step', step=[80])
+runner = dict(type='EpochBasedRunner', max_epochs=100)
 # lr_config = dict(
 #     policy='cyclic',
 #     warmup=None,
 #     cyclic_times=1,
 #     target_ratio=(10, 1e-2))
 # runner = dict(type='EpochBasedRunner', max_epochs=150)
-checkpoint_config = dict(interval=10)
+checkpoint_config = dict(interval=1)
