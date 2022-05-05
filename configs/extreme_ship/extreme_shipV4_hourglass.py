@@ -58,8 +58,8 @@ model = dict(
         ec_conf_thr = 0.01,
         tc_conf_thr = 0.1,
         valid_size_range = [(-1,0), (-1, 2),],
-        score_thr = 0.0,
-        nms_cfg = dict(type='rnms', iou_thr=0.05),
+        score_thr = 0.05,
+        nms_cfg = dict(type='rnms', iou_thr=0.20),
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
         max_per_img=100
     ))
@@ -131,11 +131,11 @@ log_config = dict(
 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None
+load_from = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_300.pth'
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp1/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp2/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
@@ -151,8 +151,8 @@ optimizer = dict(
         custom_keys={'backbone': dict(lr_mult=0.1, decay_mult=1.0)}))
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
-lr_config = dict(policy='step', step=[80])
-runner = dict(type='EpochBasedRunner', max_epochs=100)
+lr_config = dict(policy='step', step=[100])
+runner = dict(type='EpochBasedRunner', max_epochs=150)
 # lr_config = dict(
 #     policy='cyclic',
 #     warmup=None,

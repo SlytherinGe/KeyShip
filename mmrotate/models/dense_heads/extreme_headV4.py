@@ -486,7 +486,7 @@ class ExtremeHeadV4(BaseDenseHead):
                             ec_conf_thr,
                             tc_conf_thr,
                             kernel=3,
-                            with_centripetal_shift=True):
+                            **kwargs):
         # TODO:support multi-class detection
 
         batch, _, height, width = tc_heat.size()
@@ -520,7 +520,7 @@ class ExtremeHeadV4(BaseDenseHead):
         sc_ptr_l2_dist = sc_ptr_l2_dist / np.math.sqrt(width * height)
         lc_ptr_l2_dist = lc_ptr_l2_dist / np.math.sqrt(width * height)
         center_pointers_dist = center_pointers.norm(dim=-1) / np.math.sqrt(width * height)
-        center_pointers_dist_rpt = center_pointers_dist.unsqueeze(-1).repeat(1,1,1,k_pts)
+        center_pointers_dist_rpt = center_pointers_dist.unsqueeze(-1).repeat(1,1,1,k_pts) / 32.
 
         # generate scores
         sc_scores_rpt = sc_scores.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1)
@@ -528,7 +528,7 @@ class ExtremeHeadV4(BaseDenseHead):
         # calculate final score using gaussian function
         # final_score = score * e ^ -(x^2 / 2*ptr_dist^2)
         sc_scores_rpt_final = sc_scores_rpt * torch.exp(-sc_ptr_l2_dist.pow(2) / (2*center_pointers_dist_rpt[:,:,:2,:].pow(2)))
-        lc_scores_rpt_final = lc_scores_rpt * torch.exp(-sc_ptr_l2_dist.pow(2) / (2*center_pointers_dist_rpt[:,:,2:,:].pow(2)))
+        lc_scores_rpt_final = lc_scores_rpt * torch.exp(-lc_ptr_l2_dist.pow(2) / (2*center_pointers_dist_rpt[:,:,2:,:].pow(2)))
         sc_kpt_score, sc_kpt_ind = sc_scores_rpt_final.max(dim=-1, keepdim=True)
         lc_kpt_score, lc_kpt_ind = lc_scores_rpt_final.max(dim=-1, keepdim=True)
         sc_kpt_pos = sc_pos_rpt.gather(3, sc_kpt_ind.unsqueeze(-1).repeat(1,1,1,1,2)).squeeze(3)
