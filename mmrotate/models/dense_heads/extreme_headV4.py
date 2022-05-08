@@ -22,7 +22,7 @@ from ..utils import (gen_gaussian_targetR, get_local_maximum,
                      transpose_and_gather_feat, keypoints2rbboxes,
                      sort_valid_gt_bboxes, get_target_map,
                      generate_ec_from_corner_pts,
-                     generate_center_pointer_map)
+                     generate_center_pointer_map2)
 
 
 INF = 1e8
@@ -354,7 +354,7 @@ class ExtremeHeadV4(BaseDenseHead):
                     cat = int(gt_label)
                     gt_heatmaps[v][cat,...] = gen_gaussian_targetR(gt_heatmaps[v][cat,...],
                                                               x, y, w, h, a, self.sigma_ratio)
-            gt_center_pointer = generate_center_pointer_map(tc[0], sc, lc, center_pointer, gt_center_pointer)
+            gt_center_pointer = generate_center_pointer_map2(tc[0], sc, lc, center_pointer, gt_center_pointer, w, h, a, self.sigma_ratio)
 
 
         target_center_heat = gt_heatmaps[0]

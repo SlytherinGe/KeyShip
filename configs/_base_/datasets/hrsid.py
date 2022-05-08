@@ -42,6 +42,6 @@ data = dict(
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file=data_root + 'testsplit/offshore/labelTxt/',
+        ann_file=data_root + 'testsplit/all/labelTxt_bak',
         img_prefix=data_root + 'testsplit/all/images_bak',
         pipeline=test_pipeline))

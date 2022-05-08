@@ -35,10 +35,10 @@ model = dict(
             type='GaussianFocalLoss',
             alpha=2.0,
             gamma=4.0,
-            loss_weight=1                     
+            loss_weight=1.0               
         ),
         loss_pointer=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=1
+            type='SmoothL1Loss', beta=1.0, loss_weight=0.1
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
@@ -131,11 +131,11 @@ log_config = dict(
 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_300.pth'
+load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_300.pth'
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp2/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp4/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
@@ -145,18 +145,18 @@ evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
 optimizer = dict(
     type='AdamW',
-    lr=0.001,
+    lr=0.008,
     weight_decay=0.0001,
     paramwise_cfg=dict(
-        custom_keys={'backbone': dict(lr_mult=0.1, decay_mult=1.0)}))
+        custom_keys={'backbone': dict(lr_mult=1.0, decay_mult=1.0)}))
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
-lr_config = dict(policy='step', step=[100])
-runner = dict(type='EpochBasedRunner', max_epochs=150)
-# lr_config = dict(
-#     policy='cyclic',
-#     warmup=None,
-#     cyclic_times=1,
-#     target_ratio=(10, 1e-2))
-# runner = dict(type='EpochBasedRunner', max_epochs=150)
-checkpoint_config = dict(interval=1)
+# lr_config = dict(policy='step', step=[100])
+runner = dict(type='EpochBasedRunner', max_epochs=210)
+lr_config = dict(
+    policy='cyclic',
+    warmup=None,
+    cyclic_times=1,
+    target_ratio=(10, 1e-2))
+# runner = dict(type='EpochBasedRunner', max_epochs=100)
+checkpoint_config = dict(interval=3)

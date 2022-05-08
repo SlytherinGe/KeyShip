@@ -161,9 +161,9 @@ class DOTADataset(CustomDataset):
                  metric='mAP',
                  logger=None,
                  proposal_nums=(100, 300, 1000),
-                 iou_thr=0.5,
+                 iou_thr=[0.5, 0.75],
                  scale_ranges=None,
-                 nproc=4):
+                 nproc=16):
         """Evaluate the dataset.
 
         Args:
@@ -192,16 +192,28 @@ class DOTADataset(CustomDataset):
         annotations = [self.get_ann_info(i) for i in range(len(self))]
         eval_results = {}
         if metric == 'mAP':
-            assert isinstance(iou_thr, float)
-            mean_ap, _ = eval_rbbox_map(
-                results,
-                annotations,
-                scale_ranges=scale_ranges,
-                iou_thr=iou_thr,
-                dataset=self.CLASSES,
-                logger=logger,
-                nproc=nproc)
-            eval_results['mAP'] = mean_ap
+            if isinstance(iou_thr, list):
+                for iou in iou_thr:
+                    mean_ap, _ = eval_rbbox_map(
+                        results,
+                        annotations,
+                        scale_ranges=scale_ranges,
+                        iou_thr=iou,
+                        dataset=self.CLASSES,
+                        logger=logger,
+                        nproc=nproc)
+                    eval_results['mAP_{:.2}'.format(iou)] = mean_ap                    
+            else:
+                assert isinstance(iou_thr, float)
+                mean_ap, _ = eval_rbbox_map(
+                    results,
+                    annotations,
+                    scale_ranges=scale_ranges,
+                    iou_thr=iou_thr,
+                    dataset=self.CLASSES,
+                    logger=logger,
+                    nproc=nproc)
+                eval_results['mAP'] = mean_ap
         else:
             raise NotImplementedError
 

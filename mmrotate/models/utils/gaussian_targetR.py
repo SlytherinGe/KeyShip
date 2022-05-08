@@ -477,3 +477,18 @@ def generate_center_pointer_map(tc:torch.Tensor, sc, lc, ctx_ptr_map:torch.Tenso
 
     return gt_ptr_map
 
+def generate_center_pointer_map2(tc:torch.Tensor,
+                                 sc, lc,
+                                 ctx_ptr_map:torch.Tensor, 
+                                 gt_ptr_map:torch.Tensor, 
+                                 w, h, a, sigma_ratio):
+    feat_h, feat_w = ctx_ptr_map.shape[-2:]
+    if tc[0] >= feat_w or tc[1] >= feat_h or tc.lt(0).sum().gt(0):
+        return gt_ptr_map
+    temp_mask = ctx_ptr_map.new_zeros((feat_h, feat_w))
+    temp_mask = gen_gaussian_targetR(temp_mask, tc[0], tc[1], w, h, a, sigma_ratio)
+    y, x = (temp_mask > 0.5).nonzero(as_tuple=True)
+    res_pos = list(zip(x, y))
+    for pos in res_pos:
+        gt_ptr_map = generate_center_pointer_map(torch.stack(pos), sc, lc, ctx_ptr_map, gt_ptr_map)
+    return gt_ptr_map
