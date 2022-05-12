@@ -76,7 +76,7 @@ def postprocess(distance, fun='log1p', tau=1.0):
     if fun == 'log1p':
         distance = torch.log1p(distance)
     elif fun == 'sqrt':
-        distance = torch.sqrt(distance)
+        distance = torch.sqrt(distance.clamp(1e-7))
     elif fun == 'none':
         pass
     else:
@@ -91,6 +91,31 @@ def postprocess(distance, fun='log1p', tau=1.0):
 @weighted_loss
 def gwd_loss(pred, target, fun='log1p', tau=1.0, alpha=1.0, normalize=True):
     """Gaussian Wasserstein distance loss.
+    Derivation and simplification:
+        Given any positive-definite symmetrical 2*2 matrix Z:
+            :math:`Tr(Z^{1/2}) = λ_1^{1/2} + λ_2^{1/2}`
+        where :math:`λ_1` and :math:`λ_2` are the eigen values of Z
+        Meanwhile we have:
+            :math:`Tr(Z) = λ_1 + λ_2`
+
+            :math:`det(Z) = λ_1 * λ_2`
+        Combination with following formula:
+            :math:`(λ_1^{1/2}+λ_2^{1/2})^2 = λ_1+λ_2+2 *(λ_1 * λ_2)^{1/2}`
+        Yield:
+            :math:`Tr(Z^{1/2}) = (Tr(Z) + 2 * (det(Z))^{1/2})^{1/2}`
+        For gwd loss the frustrating coupling part is:
+            :math:`Tr((Σ_p^{1/2} * Σ_t * Σp^{1/2})^{1/2})`
+        Assuming :math:`Z = Σ_p^{1/2} * Σ_t * Σ_p^{1/2}` then:
+            :math:`Tr(Z) = Tr(Σ_p^{1/2} * Σ_t * Σ_p^{1/2})
+            = Tr(Σ_p^{1/2} * Σ_p^{1/2} * Σ_t)
+            = Tr(Σ_p * Σ_t)`
+            :math:`det(Z) = det(Σ_p^{1/2} * Σ_t * Σ_p^{1/2})
+            = det(Σ_p^{1/2}) * det(Σ_t) * det(Σ_p^{1/2})
+            = det(Σ_p * Σ_t)`
+        and thus we can rewrite the coupling part as:
+            :math:`Tr(Z^{1/2}) = (Tr(Z) + 2 * (det(Z))^{1/2})^{1/2}`
+            :math:`Tr((Σ_p^{1/2} * Σ_t * Σ_p^{1/2})^{1/2})
+            = (Tr(Σ_p * Σ_t) + 2 * (det(Σ_p * Σ_t))^{1/2})^{1/2}`
 
     Args:
         pred (torch.Tensor): Predicted bboxes.
@@ -102,6 +127,7 @@ def gwd_loss(pred, target, fun='log1p', tau=1.0, alpha=1.0, normalize=True):
 
     Returns:
         loss (torch.Tensor)
+
     """
     xy_p, Sigma_p = pred
     xy_t, Sigma_t = target
@@ -113,14 +139,15 @@ def gwd_loss(pred, target, fun='log1p', tau=1.0, alpha=1.0, normalize=True):
         dim1=-2, dim2=-1).sum(dim=-1)
 
     _t_tr = (Sigma_p.bmm(Sigma_t)).diagonal(dim1=-2, dim2=-1).sum(dim=-1)
-    _t_det_sqrt = (Sigma_p.det() * Sigma_t.det()).clamp(0).sqrt()
+    _t_det_sqrt = (Sigma_p.det() * Sigma_t.det()).clamp(1e-7).sqrt()
     whr_distance = whr_distance + (-2) * (
-        (_t_tr + 2 * _t_det_sqrt).clamp(0).sqrt())
+        (_t_tr + 2 * _t_det_sqrt).clamp(1e-7).sqrt())
 
-    distance = (xy_distance + alpha * alpha * whr_distance).clamp(0).sqrt()
+    distance = (xy_distance + alpha * alpha * whr_distance).clamp(1e-7).sqrt()
 
     if normalize:
-        scale = 2 * (_t_det_sqrt.sqrt().sqrt()).clamp(1e-7)
+        scale = 2 * (
+            _t_det_sqrt.clamp(1e-7).sqrt().clamp(1e-7).sqrt()).clamp(1e-7)
         distance = distance / scale
 
     return postprocess(distance, fun=fun, tau=tau)
@@ -168,7 +195,7 @@ def kld_loss(pred, target, fun='log1p', tau=1.0, alpha=1.0, sqrt=True):
     whr_distance = whr_distance - 1
     distance = (xy_distance / (alpha * alpha) + whr_distance)
     if sqrt:
-        distance = distance.clamp(0).sqrt()
+        distance = distance.clamp(1e-7).sqrt()
 
     distance = distance.reshape(_shape[:-1])
 
@@ -208,7 +235,7 @@ def jd_loss(pred, target, fun='log1p', tau=1.0, alpha=1.0, sqrt=True):
         reduction='none')
     jd = jd * 0.5
     if sqrt:
-        jd = jd.clamp(0).sqrt()
+        jd = jd.clamp(1e-7).sqrt()
     return postprocess(jd, fun=fun, tau=tau)
 
 

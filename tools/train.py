@@ -8,6 +8,7 @@ import warnings
 
 import mmcv
 import torch
+import torch.distributed as dist
 from mmcv import Config, DictAction
 from mmcv.runner import get_dist_info, init_dist
 from mmcv.utils import get_git_hash
@@ -17,7 +18,7 @@ from mmdet.apis import init_random_seed, set_random_seed
 from mmrotate.apis import train_detector
 from mmrotate.datasets import build_dataset
 from mmrotate.models import build_detector
-from mmrotate.utils import collect_env, get_root_logger
+from mmrotate.utils import collect_env, get_root_logger, setup_multi_processes
 
 
 def parse_args():
@@ -47,6 +48,10 @@ def parse_args():
         help='ids of gpus to use '
         '(only applicable to non-distributed training)')
     parser.add_argument('--seed', type=int, default=None, help='random seed')
+    parser.add_argument(
+        '--diff-seed',
+        action='store_true',
+        help='Whether or not set different seeds for different ranks')
     parser.add_argument(
         '--deterministic',
         action='store_true',
@@ -80,6 +85,10 @@ def main():
     cfg = Config.fromfile(args.config)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
+
+    # set multi-process settings
+    setup_multi_processes(cfg)
+
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
@@ -142,6 +151,7 @@ def main():
 
     # set random seeds
     seed = init_random_seed(args.seed)
+    seed = seed + dist.get_rank() if args.diff_seed else seed
     logger.info(f'Set random seed to {seed}, '
                 f'deterministic: {args.deterministic}')
     set_random_seed(seed, deterministic=args.deterministic)

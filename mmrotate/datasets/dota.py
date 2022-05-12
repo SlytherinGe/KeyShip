@@ -15,8 +15,7 @@ import torch
 from mmcv.ops import nms_rotated
 from mmdet.datasets.custom import CustomDataset
 
-from mmrotate.core import obb2poly_np, poly2obb_np
-from mmrotate.core.evaluation import eval_rbbox_map
+from mmrotate.core import eval_rbbox_map, obb2poly_np, poly2obb_np
 from .builder import ROTATED_DATASETS
 
 
@@ -35,6 +34,11 @@ class DOTADataset(CustomDataset):
                'basketball-court', 'storage-tank', 'soccer-ball-field',
                'roundabout', 'harbor', 'swimming-pool', 'helicopter')
 
+    PALETTE = [(165, 42, 42), (189, 183, 107), (0, 255, 0), (255, 0, 0),
+               (138, 43, 226), (255, 128, 0), (255, 0, 255), (0, 255, 255),
+               (255, 193, 193), (0, 51, 153), (255, 250, 205), (0, 139, 139),
+               (255, 255, 0), (147, 116, 116), (0, 0, 255)]
+
     def __init__(self,
                  ann_file,
                  pipeline,
@@ -52,7 +56,7 @@ class DOTADataset(CustomDataset):
 
     def load_annotations(self, ann_folder):
         """
-            Params:
+            Args:
                 ann_folder: folder that contains DOTA v1 annotations txt files
         """
         cls_map = {c: i
@@ -222,7 +226,7 @@ class DOTADataset(CustomDataset):
     def merge_det(self, results, nproc=4):
         """Merging patch bboxes into full image.
 
-        Params:
+        Args:
             results (list): Testing results of the dataset.
             nproc (int): number of process. Default: 4.
         """
@@ -264,7 +268,7 @@ class DOTADataset(CustomDataset):
     def _results2submission(self, id_list, dets_list, out_folder=None):
         """Generate the submission of full images.
 
-        Params:
+        Args:
             id_list (list): Id of images.
             dets_list (list): Detection results of per class.
             out_folder (str, optional): Folder of submission.
@@ -308,14 +312,16 @@ class DOTADataset(CustomDataset):
         Args:
             results (list): Testing results of the dataset.
             submission_dir (str, optional): The folder that contains submission
-            files.
-                If not specified, a temp folder will be created. Default: None.
+                files. If not specified, a temp folder will be created.
+                Default: None.
             nproc (int, optional): number of process.
 
         Returns:
-            tuple: (result_files, tmp_dir), result_files is a dict containing
-                the json filepaths, tmp_dir is the temporal directory created
-                for saving json files when submission_dir is not specified.
+            tuple:
+
+                - result_files (dict): a dict containing the json filepaths
+                - tmp_dir (str): the temporal directory created for saving \
+                    json files when submission_dir is not specified.
         """
         nproc = min(nproc, os.cpu_count())
         assert isinstance(results, list), 'results must be a list'
@@ -342,7 +348,7 @@ class DOTADataset(CustomDataset):
 def _merge_func(info, CLASSES, iou_thr):
     """Merging patch bboxes into full image.
 
-    Params:
+    Args:
         CLASSES (list): Label category.
         iou_thr (float): Threshold of IoU.
     """

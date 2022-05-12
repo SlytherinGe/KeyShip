@@ -10,6 +10,24 @@ from .rotate_standard_roi_head import RotatedStandardRoIHead
 class OrientedStandardRoIHead(RotatedStandardRoIHead):
     """Oriented RCNN roi head including one bbox head."""
 
+    def forward_dummy(self, x, proposals):
+        """Dummy forward function.
+
+        Args:
+            x (list[Tensors]): list of multi-level img features.
+            proposals (list[Tensors]): list of region proposals.
+
+        Returns:
+            list[Tensors]: list of region of interest.
+        """
+        outs = ()
+        rois = rbbox2roi([proposals])
+        if self.with_bbox:
+            bbox_results = self._bbox_forward(x, rois)
+            outs = outs + (bbox_results['cls_score'],
+                           bbox_results['bbox_pred'])
+        return outs
+
     def forward_train(self,
                       x,
                       img_metas,
@@ -122,11 +140,11 @@ class OrientedStandardRoIHead(RotatedStandardRoIHead):
                 Default: False.
 
         Returns:
-            tuple[list[Tensor], list[Tensor]]: The first list contains
-                the boxes of the corresponding image in a batch, each
-                tensor has the shape (num_boxes, 5) and last dimension
-                5 represent (cx, cy, w, h, a, score). Each Tensor
-                in the second list is the labels with shape (num_boxes, ).
+            tuple[list[Tensor], list[Tensor]]: The first list contains \
+                the boxes of the corresponding image in a batch, each \
+                tensor has the shape (num_boxes, 5) and last dimension \
+                5 represent (cx, cy, w, h, a, score). Each Tensor \
+                in the second list is the labels with shape (num_boxes, ). \
                 The length of both lists should be equal to batch_size.
         """
 

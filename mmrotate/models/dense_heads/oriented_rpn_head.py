@@ -4,16 +4,16 @@ import copy
 import torch
 import torch.nn as nn
 from mmcv.ops import batched_nms
-from mmdet.core import unmap
+from mmdet.core import anchor_inside_flags, unmap
 
-from mmrotate.core import obb2xyxy, rotated_anchor_inside_flags
+from mmrotate.core import obb2xyxy
 from ..builder import ROTATED_HEADS
 from .rotated_rpn_head import RotatedRPNHead
 
 
 @ROTATED_HEADS.register_module()
 class OrientedRPNHead(RotatedRPNHead):
-    """Oriented RPN head for rotated bboxes."""
+    """Oriented RPN head for Oriented R-CNN."""
 
     def _init_layers(self):
         """Initialize layers of the head."""
@@ -54,17 +54,19 @@ class OrientedRPNHead(RotatedRPNHead):
                 set of anchors.
 
         Returns:
-            tuple:
-                labels_list (list[Tensor]): Labels of each level
-                label_weights_list (list[Tensor]): Label weights of each level
-                bbox_targets_list (list[Tensor]): BBox targets of each level
-                bbox_weights_list (list[Tensor]): BBox weights of each level
-                num_total_pos (int): Number of positive samples in all images
-                num_total_neg (int): Number of negative samples in all images
+            tuple (list[Tensor]):
+
+                - labels_list (list[Tensor]): Labels of each level
+                - label_weights_list (list[Tensor]): Label weights of each \
+                  level
+                - bbox_targets_list (list[Tensor]): BBox targets of each level
+                - bbox_weights_list (list[Tensor]): BBox weights of each level
+                - num_total_pos (int): Number of positive samples in all images
+                - num_total_neg (int): Number of negative samples in all images
         """
-        inside_flags = rotated_anchor_inside_flags(
-            flat_anchors, valid_flags, img_meta['img_shape'][:2],
-            self.train_cfg.allowed_border)
+        inside_flags = anchor_inside_flags(flat_anchors, valid_flags,
+                                           img_meta['img_shape'][:2],
+                                           self.train_cfg.allowed_border)
         if not inside_flags.any():
             return (None, ) * 7
         # assign gt and sample anchors
@@ -155,7 +157,10 @@ class OrientedRPNHead(RotatedRPNHead):
                 positive anchors.
 
         Returns:
-            dict[str, Tensor]: A dictionary of loss components.
+            tuple (torch.Tensor):
+
+                - loss_cls (torch.Tensor): cls. loss for each scale level.
+                - loss_bbox (torch.Tensor): reg. loss for each scale level.
         """
         # classification loss
         labels = labels.reshape(-1)
