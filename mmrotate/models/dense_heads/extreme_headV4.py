@@ -8,10 +8,6 @@ from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
 import cv2
 from mmcv.runner.base_module import BaseModule
-from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
-from mmcv.cnn import xavier_init
-from mmcv.cnn import Linear, build_activation_layer
-from mmcv.cnn.bricks.transformer import FFN, build_positional_encoding
 
 from mmrotate.core import multiclass_nms_rotated
 from mmdet.core import build_assigner, build_sampler, reduce_mean
@@ -22,7 +18,8 @@ from ..utils import (gen_gaussian_targetR, get_local_maximum,
                      transpose_and_gather_feat, keypoints2rbboxes,
                      sort_valid_gt_bboxes, get_target_map,
                      generate_ec_from_corner_pts,
-                     generate_center_pointer_map2)
+                     generate_center_pointer_map2,
+                     set_offset2)
 
 
 INF = 1e8
@@ -95,6 +92,7 @@ class ExtremeHeadV4(BaseDenseHead):
                  shortside_center_cfg,
                  target_center_cfg,
                  center_pointer_cfg,
+                 ec_offset_cfg,
                  regress_ratio=((-1, 0.1), (0.1, 0.2), (0.2, 0.4), (0.4, 1)),
                  loss_heatmap=dict(
                      type='GaussianFocalLoss',
@@ -103,6 +101,9 @@ class ExtremeHeadV4(BaseDenseHead):
                      loss_weight=1                     
                     ),
                  loss_pointer=dict(
+                     type='SmoothL1Loss', beta=1.0, loss_weight=1
+                 ),
+                 loss_offsets=dict(
                      type='SmoothL1Loss', beta=1.0, loss_weight=1
                  ),
                  train_cfg=None,
@@ -117,10 +118,13 @@ class ExtremeHeadV4(BaseDenseHead):
         # init losses
         self.loss_heatmap = None if loss_heatmap == None else build_loss(loss_heatmap)
         self.loss_pointer = None if loss_pointer == None else build_loss(loss_pointer)
+        self.loss_offsets = None if loss_offsets == None else build_loss(loss_offsets)
         self.train_cfg = train_cfg if train_cfg is not None else dict()
         self.test_cfg = test_cfg
         self.norm_cfg = norm_cfg
         self.sigma_ratio = self.train_cfg.get('gaussioan_sigma_ratio', (0.1, 0.1))
+        self.lc_ptr_sigma = self.test_cfg.get('lc_ptr_sigma', 0.1)
+        self.sc_ptr_sigma = self.test_cfg.get('sc_ptr_sigma', 0.01)
 
         self.train_cache_cfg = self.train_cfg.get('cache_cfg', None)
         self.test_cache_cfg = self.test_cfg.get('cache_cfg', None)
@@ -130,6 +134,7 @@ class ExtremeHeadV4(BaseDenseHead):
         self.shortside_center_cfg = shortside_center_cfg
         self.target_center_cfg = target_center_cfg
         self.center_pointer_cfg = center_pointer_cfg
+        self.ec_offset_cfg = ec_offset_cfg
 
         self._init_layers()
 
@@ -215,20 +220,22 @@ class ExtremeHeadV4(BaseDenseHead):
     def _init_extreme_pts_layers(self):
 
         self.longside_center = self._make_layers(self.longside_center_cfg, self.in_channels)
-        # self.head_modules.append('longside_center')
         self.shortside_center = self._make_layers(self.shortside_center_cfg, self.in_channels)
-        # self.head_modules.append('shortside_center')
         self.target_center = self._make_layers(self.target_center_cfg, self.in_channels)
-        # self.head_modules.append('target_center')
 
     def _init_center_pointer_layers(self):
 
         self.center_pointer = self._make_layers(self.center_pointer_cfg, self.in_channels)
 
+    def _init_ec_offset_layers(self):
+
+        self.ec_offset = self._make_layers(self.ec_offset_cfg, self.in_channels)
+
     def _init_layers(self):
 
         self._init_extreme_pts_layers()
         self._init_center_pointer_layers()
+        self._init_ec_offset_layers()
 
     def init_weights(self):
 
@@ -261,12 +268,20 @@ class ExtremeHeadV4(BaseDenseHead):
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
         self.center_pointer[-1].conv.bias.data.fill_(bias_init)      
+
+        # init ec offset
+        for m in self.ec_offset:
+            if isinstance(m, nn.Upsample):
+                continue
+            elif isinstance(m.conv, nn.Conv2d):
+                normal_init(m.conv, std=0.01)
+        self.ec_offset[-1].conv.bias.data.fill_(bias_init) 
         
     def forward_single(self, x):
         '''
             during training, all_cls_scores, all_bbox_preds, all_center_dets are replaced with lc, sc, tc
         '''
-        lc, sc, tc, ctx_ptr = x, x, x, x
+        lc, sc, tc, ctx_ptr, offset = x, x, x, x, x
 
         for layer in self.longside_center:
             lc = layer(lc)
@@ -278,9 +293,12 @@ class ExtremeHeadV4(BaseDenseHead):
         for layer in self.center_pointer:
             ctx_ptr = layer(ctx_ptr)
 
-        result_list = [lc, sc, tc, ctx_ptr]
+        for layer in self.ec_offset:
+            offset = layer(offset)
 
-        return  result_list
+        result_list = [lc, sc, tc, ctx_ptr, offset]
+
+        return result_list
 
     def forward(self, feats):
 
@@ -295,12 +313,15 @@ class ExtremeHeadV4(BaseDenseHead):
                             img_shape):
         """
         center_pointer: [8, feat_h, feat_w], first dim: (sc_x, sc_y, ..., lc_x, lc_y, ...)
+        ec_offset: [4, feat_h, feat_w], first dim: (sc_off_x, sc_off_y, lc_off_x, lc_off_y)
         """
         _, _, feat_h, feat_w = feat_shape
         img_h, img_w, _ = img_shape
         stride_h, stride_w = img_h / feat_h, img_w / feat_w
         # gt heatmaps: 0:target center 1: shortside center 2:longside center
         gt_heatmaps = [gt_bboxes.new_zeros((self.num_classes, feat_h, feat_w))  for _ in range(3)]
+        gt_offsets = gt_bboxes.new_zeros((self.ec_offset_cfg[-1][1][1], feat_h, feat_w),
+                                  dtype=torch.float32, device=gt_bboxes.device)         
         # gt center pointer
         gt_center_pointer = gt_bboxes.new_zeros((8, feat_h, feat_w))
         # sort valid gt bboxes for this level
@@ -354,6 +375,9 @@ class ExtremeHeadV4(BaseDenseHead):
                     cat = int(gt_label)
                     gt_heatmaps[v][cat,...] = gen_gaussian_targetR(gt_heatmaps[v][cat,...],
                                                               x, y, w, h, a, self.sigma_ratio)
+                    if v > 0:
+                        gt_offsets[v*2-2: v*2] =  set_offset2(center, gt_offsets[v*2-2: v*2], w, h, a, self.sigma_ratio)
+
             gt_center_pointer = generate_center_pointer_map2(tc[0], sc, lc, center_pointer, gt_center_pointer, w, h, a, self.sigma_ratio)
 
 
@@ -361,7 +385,7 @@ class ExtremeHeadV4(BaseDenseHead):
         shortside_center_heat = gt_heatmaps[1]
         longside_center_heat = gt_heatmaps[2]
 
-        return target_center_heat, shortside_center_heat, longside_center_heat, target_map, gt_center_pointer
+        return target_center_heat, shortside_center_heat, longside_center_heat, target_map, gt_center_pointer, gt_offsets
 
     def get_targets(self,
                     center_pointer,
@@ -391,7 +415,8 @@ class ExtremeHeadV4(BaseDenseHead):
                 gt_shortside_center = batched_feat_targets[1],
                 gt_longside_center = batched_feat_targets[2],
                 target_map = batched_feat_targets[3],
-                gt_center_pointer = batched_feat_targets[4]
+                gt_center_pointer = batched_feat_targets[4],
+                gt_offsets = batched_feat_targets[5]
             )
             multi_lvl_feat_targets.append(target_result)
 
@@ -433,21 +458,28 @@ class ExtremeHeadV4(BaseDenseHead):
 
         return lc_det_loss / 3, sc_det_loss / 3, tc_det_loss / 3
 
-    def loss_reg_single(self, ctx_ptr, targets):
+    def loss_reg_single(self, ctx_ptr, ec_offset, targets):
 
         gt_center_pointer = targets['gt_center_pointer']
+        gt_offsets = targets['gt_offsets']
         gt_center_pointer_mask = gt_center_pointer.ne(0).sum(1).gt(0).unsqueeze(1).type_as(ctx_ptr)
+        gt_offset_mask = gt_offsets.ne(0).type_as(ec_offset)
         pointer_loss = self.loss_pointer(ctx_ptr,
                                         gt_center_pointer,
                                         gt_center_pointer_mask,
                                         avg_factor=max(1, gt_center_pointer_mask.sum()))
-        return pointer_loss,
+        offset_loss = self.loss_offsets(ec_offset,
+                                        gt_offsets,
+                                        gt_offset_mask,
+                                        avg_factor=max(1, gt_center_pointer_mask.sum()))
+        return pointer_loss, offset_loss
 
     def loss(self,
              longside_center_heats,
              shortside_center_heats,
              target_center_heats,
              center_pointer,
+             ec_offset,
              gt_bboxes,
              gt_labels,
              gt_masks,
@@ -464,14 +496,15 @@ class ExtremeHeadV4(BaseDenseHead):
                                 target_center_heats,
                                 targets)
 
-        pointer_loss, = multi_apply(self.loss_reg_single,
+        pointer_loss, offset_loss= multi_apply(self.loss_reg_single,
                                     center_pointer,
+                                    ec_offset,
                                     targets)
 
         loss_dict = dict(lc_det_loss=lc_det_loss,
                          sc_det_loss=sc_det_loss,
                          tc_det_loss=tc_det_loss,
-                        #  offset_loss=offset_loss,
+                         offset_loss=offset_loss,
                          pointer_loss=pointer_loss)
 
         return loss_dict
@@ -481,6 +514,7 @@ class ExtremeHeadV4(BaseDenseHead):
                             lc_heat,
                             sc_heat,
                             ctx_ptr,
+                            ec_offset,
                             k_pts,
                             num_dets,
                             ec_conf_thr,
@@ -519,16 +553,14 @@ class ExtremeHeadV4(BaseDenseHead):
         # normalize l2 dist
         sc_ptr_l2_dist = sc_ptr_l2_dist / np.math.sqrt(width * height)
         lc_ptr_l2_dist = lc_ptr_l2_dist / np.math.sqrt(width * height)
-        center_pointers_dist = center_pointers.norm(dim=-1) / np.math.sqrt(width * height)
-        center_pointers_dist_rpt = center_pointers_dist.unsqueeze(-1).repeat(1,1,1,k_pts) / 32.
 
         # generate scores
         sc_scores_rpt = sc_scores.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1)
         lc_scores_rpt = lc_scores.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1)
         # calculate final score using gaussian function
         # final_score = score * e ^ -(x^2 / 2*ptr_dist^2)
-        sc_scores_rpt_final = sc_scores_rpt * torch.exp(-sc_ptr_l2_dist.pow(2) / (2*center_pointers_dist_rpt[:,:,:2,:].pow(2)))
-        lc_scores_rpt_final = lc_scores_rpt * torch.exp(-lc_ptr_l2_dist.pow(2) / (2*center_pointers_dist_rpt[:,:,2:,:].pow(2)))
+        sc_scores_rpt_final = sc_scores_rpt * torch.exp(-sc_ptr_l2_dist.pow(2) / (2*ctx_ptr.new_tensor(self.sc_ptr_sigma).pow(2)))
+        lc_scores_rpt_final = lc_scores_rpt * torch.exp(-lc_ptr_l2_dist.pow(2) / (2*ctx_ptr.new_tensor(self.lc_ptr_sigma).pow(2)))
         sc_kpt_score, sc_kpt_ind = sc_scores_rpt_final.max(dim=-1, keepdim=True)
         lc_kpt_score, lc_kpt_ind = lc_scores_rpt_final.max(dim=-1, keepdim=True)
         sc_kpt_pos = sc_pos_rpt.gather(3, sc_kpt_ind.unsqueeze(-1).repeat(1,1,1,1,2)).squeeze(3)
@@ -538,6 +570,16 @@ class ExtremeHeadV4(BaseDenseHead):
         lc_kpt_pos = torch.where(lc_kpt_score > ec_conf_thr, lc_kpt_pos, tc_pointer_res[:,:,2:,:])
         sc_kpt_score = torch.where(sc_kpt_score > ec_conf_thr, sc_kpt_score, sc_kpt_score.new_full(sc_kpt_score.shape, ec_conf_thr))
         lc_kpt_score = torch.where(lc_kpt_score > ec_conf_thr, lc_kpt_score, lc_kpt_score.new_full(lc_kpt_score.shape, ec_conf_thr))
+
+        # sample offset using grid_sample
+        # normalize kpt pos to [-1, 1]
+        pos_norm_scaler = sc_kpt_pos.new_tensor([width // 2, height // 2])
+        sc_kpt_pos_norm = (sc_kpt_pos - pos_norm_scaler) / pos_norm_scaler
+        lc_kpt_pos_norm = (lc_kpt_pos - pos_norm_scaler) / pos_norm_scaler
+        sc_kpt_off = F.grid_sample(ec_offset[:,:2,...], sc_kpt_pos_norm, 'bilinear', 'zeros', align_corners=False)
+        lc_kpt_off = F.grid_sample(ec_offset[:,2:,...], lc_kpt_pos_norm, 'bilinear', 'zeros', align_corners=False)
+        sc_kpt_pos = sc_kpt_pos.floor() + 0.5 + sc_kpt_off.permute(0,2,3,1)
+        lc_kpt_pos = lc_kpt_pos.floor() + 0.5 + lc_kpt_off.permute(0,2,3,1)
 
         # generate final results
         scores = (tc_scores * 2 + sc_kpt_score.squeeze(-1).sum(-1) + lc_kpt_score.squeeze(-1).sum(-1)) / 6
@@ -636,6 +678,7 @@ class ExtremeHeadV4(BaseDenseHead):
                     list_shortside_center,
                     list_target_center,
                     list_center_pointer,
+                    list_ec_offset,
                     img_metas,
                     rescale=False,
                     with_nms=True):
@@ -650,6 +693,7 @@ class ExtremeHeadV4(BaseDenseHead):
                     sc=list_shortside_center,
                     tc=list_target_center,
                     cp=list_center_pointer,
+                    off=list_ec_offset,
                 ),
                 img_metas=img_metas
             )
@@ -661,6 +705,7 @@ class ExtremeHeadV4(BaseDenseHead):
         assert len(list_longside_center) == len(list_shortside_center)  and \
             len(list_shortside_center) == len(list_target_center) and \
             len(list_longside_center) == len(list_center_pointer) and \
+            len(list_longside_center) == len(list_ec_offset) and \
             len(list_center_pointer) == len(self.list_num_pkts_per_lvl)
 
         if self.valid_size_range is not None:
@@ -677,6 +722,7 @@ class ExtremeHeadV4(BaseDenseHead):
             list_longside_center,
             list_shortside_center,
             list_center_pointer,
+            list_ec_offset,
             self.list_num_pkts_per_lvl,
             self.list_num_dets_per_lvl,
             ec_conf_thr=self.ec_conf_thr,

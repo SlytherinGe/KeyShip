@@ -126,7 +126,7 @@ log_config = dict(
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_300.pth'
-resume_from = None
+resume_from = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/HRSID/ExtremeShipV4/exp1/epoch_207.pth'
 workflow = [('train', 1)]
 
 work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/HRSID/ExtremeShipV4/exp1/'
@@ -140,4 +140,4 @@ optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 optimizer = dict(type='Adam', lr=0.0008)
 lr_config = dict(policy='step', step=[190])
 runner = dict(type='EpochBasedRunner', max_epochs=210)
-checkpoint_config = dict(interval=3)
+checkpoint_config = dict(interval=1)

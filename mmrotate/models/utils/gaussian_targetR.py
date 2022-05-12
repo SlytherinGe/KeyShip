@@ -492,3 +492,19 @@ def generate_center_pointer_map2(tc:torch.Tensor,
     for pos in res_pos:
         gt_ptr_map = generate_center_pointer_map(torch.stack(pos), sc, lc, ctx_ptr_map, gt_ptr_map)
     return gt_ptr_map
+
+def set_offset2(ec:torch.Tensor,
+                offset_map:torch.Tensor,
+                w, h, a, sigma_ratio):
+    feat_h, feat_w = offset_map.shape[-2:]
+    if ec[0] >= feat_w or ec[1] >= feat_h or ec.lt(0).sum().gt(0):
+        return offset_map 
+    temp_mask = offset_map.new_zeros((feat_h, feat_w))
+    temp_mask = gen_gaussian_targetR(temp_mask, ec[0], ec[1], w, h, a, sigma_ratio)
+    y, x = (temp_mask > 0.5).nonzero(as_tuple=True)
+    res_pos = list(zip(x, y))
+    for pos in res_pos:
+        if pos[0] < feat_w and pos[1] < feat_h:
+            offset_map[0, pos[1], pos[0]] = ec[0] - pos[0] - 0.5
+            offset_map[1, pos[1], pos[0]] = ec[1] - pos[1] - 0.5
+    return offset_map

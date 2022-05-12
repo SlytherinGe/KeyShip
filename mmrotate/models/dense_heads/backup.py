@@ -1,3 +1,5 @@
+from audioop import mul
+from ctypes import pointer
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,10 +8,6 @@ from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
 import cv2
 from mmcv.runner.base_module import BaseModule
-from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
-from mmcv.cnn import xavier_init
-from mmcv.cnn import Linear, build_activation_layer
-from mmcv.cnn.bricks.transformer import FFN, build_positional_encoding
 
 from mmrotate.core import multiclass_nms_rotated
 from mmdet.core import build_assigner, build_sampler, reduce_mean
@@ -19,7 +17,11 @@ from ..utils import (gen_gaussian_targetR, get_local_maximum,
                      get_topk_from_heatmap, gather_feat,
                      transpose_and_gather_feat, keypoints2rbboxes,
                      sort_valid_gt_bboxes, get_target_map,
-                     generate_ec_from_corner_pts)
+                     generate_ec_from_corner_pts,
+                     generate_center_pointer_map2,
+                     set_offset2)
+
+
 INF = 1e8
 SMALL_NUM = 1e-6
 # multi-thread for saving heatmaps
@@ -27,77 +29,6 @@ import mmcv
 import os
 import queue
 from threading import Thread
-
-class ClusFormer(BaseModule):
-
-    def __init__(self, num_classes,
-                       encoder=None, 
-                       decoder=None, 
-                       act_cfg=dict(type='ReLU', inplace=True),
-                       init_cfg=None):
-        super().__init__(init_cfg)
-        self.num_classes = num_classes
-        self.encoder = build_transformer_layer_sequence(encoder)
-        self.decoder = build_transformer_layer_sequence(decoder)
-        self.embed_dims = self.encoder.embed_dims
-        self.act_cfg = act_cfg
-        self.activation = build_activation_layer(self.act_cfg)
-        self._init_layers()
-
-    def _init_layers(self):
-        '''Initialize layers of the clusformer head'''
-        self.enc_proj = nn.Linear(self.embed_dims, self.embed_dims)
-        self.post_enc_proj_norm = nn.LayerNorm(self.embed_dims)
-        self.fc_cls = Linear(self.embed_dims, self.num_classes+1)
-        # self.ffn_reg = FFN(act_cfg=self.act_cfg)
-        # self.fc_reg = Linear(self.embed_dims, 8)
-
-    def init_weights(self):
-
-        for m in self.modules():
-            if hasattr(m, 'weight') and m.weight.dim() > 1:
-                xavier_init(m, distribution='uniform')
-        self._is_init = True   
-        return super().init_weights()         
-
-    def forward(self, ec_vecs, tc_vecs, ec_pos_embed=None, tc_pos_embed=None):
-        """Forward function for `Transformer`.
-
-        Args:
-            ec_vecs (Tensor): Input ec center query with shape
-                [2*num_queries, batch_size, embed_dims] where
-            tc_vecs (Tensor): Input ec center query with shape
-                [num_queries, batch_size, embed_dims] where
-            ec_pos_embed (Tensor): Sampled positional embedding for ec
-                with the shape of [2*num_queries, batch_size, embed_dims].
-            ec_pos_embed (Tensor): Sampled positional embedding for ec
-                with the shape of [num_queries, batch_size, embed_dims].
-
-        Returns:
-            tuple[Tensor]: results of decoder containing the following tensor.
-
-                - cls_score: Class output from decoder. num_class means background object.
-                      with shape [batch_size, num_queries, num_class+1]
-                - bbox_pred: Normalized bbox prediction from decoder, with shape \
-                      [batch_size, num_queries, 8]. The last dims contains the 
-                      following pos info: [SC1_x, SC1_y, SC2_x, SC2_y, LC1_x, LC1_y,
-                      LC2_x, LC2_y]
-        """
-        ec_vec_embeded = self.post_enc_proj_norm(self.enc_proj(ec_vecs))
-        tc_vec_embeded = self.post_enc_proj_norm(self.enc_proj(tc_vecs))
-
-        memory = self.encoder(ec_vec_embeded, 
-                              key=None, 
-                              value=None, 
-                              query_pos=ec_pos_embed)
-        out_dec = self.decoder(query=tc_vec_embeded, 
-                               key=memory, 
-                               value=memory, 
-                               key_pos=ec_pos_embed, 
-                               query_pos=tc_pos_embed)
-        out_dec = out_dec.permute(1,0,2)
-        all_cls_scores = self.fc_cls(out_dec)
-        # all_bbox_preds = self.fc_reg(self.activation(self.ffn_reg(out_dec))).sigmoid()
 
 def ThreadSaveCacheFile(dq, train_cache_cfg, test_cache_cfg):
 
@@ -139,6 +70,9 @@ def ThreadSaveCacheFile(dq, train_cache_cfg, test_cache_cfg):
             mmcv.dump(save_dict, saved_file + '.pkl')
 
         if save_b is not None:
+            for key, values in save_b.items():
+                for k, value in enumerate(values):
+                    save_b[key][k] = value.cpu()
             img_meta = img_metas[0]
             filename = img_meta['filename']
             filename = os.path.basename(filename).split('.')[0]
@@ -147,8 +81,9 @@ def ThreadSaveCacheFile(dq, train_cache_cfg, test_cache_cfg):
 
         dq.task_done()
 
+
 @ROTATED_HEADS.register_module()
-class ExtremeHeadV3(BaseDenseHead):
+class ExtremeHeadV4(BaseDenseHead):
 
     def __init__(self,
                  num_classes,
@@ -156,11 +91,8 @@ class ExtremeHeadV3(BaseDenseHead):
                  longside_center_cfg,
                  shortside_center_cfg,
                  target_center_cfg,
-                 clusformer_cfg=None,
-                 positional_encoding=dict(
-                     type='SinePositionalEncoding',
-                     num_feats=128,
-                     normalize=True),
+                 center_pointer_cfg,
+                 ec_offset_cfg,
                  regress_ratio=((-1, 0.1), (0.1, 0.2), (0.2, 0.4), (0.4, 1)),
                  loss_heatmap=dict(
                      type='GaussianFocalLoss',
@@ -168,29 +100,31 @@ class ExtremeHeadV3(BaseDenseHead):
                      gamma=4.0,
                      loss_weight=1                     
                     ),
-                 loss_clusformer_cls=dict(
-                                type='CrossEntropyLoss',
-                                use_sigmoid=False,
-                                loss_weight=1.0),
-                 loss_clusformer_reg=dict(type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=5.0), 
+                 loss_pointer=dict(
+                     type='SmoothL1Loss', beta=1.0, loss_weight=1
+                 ),
+                 loss_offsets=dict(
+                     type='SmoothL1Loss', beta=1.0, loss_weight=1
+                 ),
                  train_cfg=None,
                  test_cfg=None,
                  norm_cfg=None,
                 ):
-        super(ExtremeHeadV3, self).__init__()
+        super(ExtremeHeadV4, self).__init__()
         # self.head_modules = []
         self.num_classes = num_classes
         self.in_channels = in_channels
         self.regress_ratios = regress_ratio
         # init losses
         self.loss_heatmap = None if loss_heatmap == None else build_loss(loss_heatmap)
-        self.loss_clusformer_cls = None if loss_clusformer_cls == None else build_loss(loss_clusformer_cls)
-        self.loss_clusformer_reg = None if loss_clusformer_reg == None else build_loss(loss_clusformer_reg)
-
+        self.loss_pointer = None if loss_pointer == None else build_loss(loss_pointer)
+        self.loss_offsets = None if loss_offsets == None else build_loss(loss_offsets)
         self.train_cfg = train_cfg if train_cfg is not None else dict()
         self.test_cfg = test_cfg
         self.norm_cfg = norm_cfg
         self.sigma_ratio = self.train_cfg.get('gaussioan_sigma_ratio', (0.1, 0.1))
+        self.lc_ptr_sigma = self.test_cfg.get('lc_ptr_sigma', 0.1)
+        self.sc_ptr_sigma = self.test_cfg.get('sc_ptr_sigma', 0.01)
 
         self.train_cache_cfg = self.train_cfg.get('cache_cfg', None)
         self.test_cache_cfg = self.test_cfg.get('cache_cfg', None)
@@ -199,24 +133,10 @@ class ExtremeHeadV3(BaseDenseHead):
         self.longside_center_cfg = longside_center_cfg
         self.shortside_center_cfg = shortside_center_cfg
         self.target_center_cfg = target_center_cfg
+        self.center_pointer_cfg = center_pointer_cfg
+        self.ec_offset_cfg = ec_offset_cfg
 
         self._init_layers()
-
-        # init Clusformer
-        self.clusformer = ClusFormer(num_classes,
-                                     clusformer_cfg.get('encoder_cfg', None),
-                                     clusformer_cfg.get('decoder_cfg', None))
-        self.num_queries = clusformer_cfg.get('num_queries', 60)
-        self.positional_encoder = build_positional_encoding(positional_encoding)
-
-        # init assigner
-        if train_cfg:
-            assert 'assigner' in train_cfg, 'assigner should be provided '\
-                'when train_cfg is set.'
-            assigner = train_cfg['assigner']
-            self.assigner = build_assigner(assigner)
-            sampler_cfg = dict(type='PseudoSampler')
-            self.sampler = build_sampler(sampler_cfg, context=self)
 
         # test cfg init
         self.list_num_pkts_per_lvl = self.test_cfg.get('num_kpts_per_lvl', None)
@@ -300,19 +220,24 @@ class ExtremeHeadV3(BaseDenseHead):
     def _init_extreme_pts_layers(self):
 
         self.longside_center = self._make_layers(self.longside_center_cfg, self.in_channels)
-        # self.head_modules.append('longside_center')
         self.shortside_center = self._make_layers(self.shortside_center_cfg, self.in_channels)
-        # self.head_modules.append('shortside_center')
         self.target_center = self._make_layers(self.target_center_cfg, self.in_channels)
-        # self.head_modules.append('target_center')
+
+    def _init_center_pointer_layers(self):
+
+        self.center_pointer = self._make_layers(self.center_pointer_cfg, self.in_channels)
+
+    def _init_ec_offset_layers(self):
+
+        self.ec_offset = self._make_layers(self.ec_offset_cfg, self.in_channels)
 
     def _init_layers(self):
 
         self._init_extreme_pts_layers()
-    
-    def init_weights(self):
+        self._init_center_pointer_layers()
+        self._init_ec_offset_layers()
 
-        self.clusformer.init_weights()
+    def init_weights(self):
 
         bias_init = bias_init_with_prob(0.1)
 
@@ -335,47 +260,28 @@ class ExtremeHeadV3(BaseDenseHead):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
-        self.target_center[-1].conv.bias.data.fill_(bias_init)
+        self.target_center[-1].conv.bias.data.fill_(bias_init)       
+
+        for m in self.center_pointer:
+            if isinstance(m, nn.Upsample):
+                continue
+            elif isinstance(m.conv, nn.Conv2d):
+                normal_init(m.conv, std=0.01)
+        self.center_pointer[-1].conv.bias.data.fill_(bias_init)      
+
+        # init ec offset
+        for m in self.ec_offset:
+            if isinstance(m, nn.Upsample):
+                continue
+            elif isinstance(m.conv, nn.Conv2d):
+                normal_init(m.conv, std=0.01)
+        self.ec_offset[-1].conv.bias.data.fill_(bias_init) 
         
-    def forward_transformer_single(self, lc, sc, tc, x):
-        # TODO:ramdom drop
-        # clusformer forward
-        batch, _, feat_h, feat_w = x.size()
-        mask = x.new_zeros((batch, feat_h, feat_w))
-        # pos_embedding = self.positional_encoder(mask).to(x.device).expand_as(x).detach()
-        lc_peak = get_local_maximum(lc)
-        sc_peak = get_local_maximum(sc)
-        tc_peak = get_local_maximum(tc)
-        _, topk_inds_tc, _, topk_ys_tc, topk_xs_tc = get_topk_from_heatmap(tc_peak, self.num_queries)
-        _, topk_inds_sc, _, _, _ = get_topk_from_heatmap(sc_peak, self.num_queries)
-        _, topk_inds_lc, _, _, _ = get_topk_from_heatmap(lc_peak, self.num_queries)
-
-        # peak_feat shape [batch_size, num_peak, num_feat]
-        peak_feat_tc = transpose_and_gather_feat(x, topk_inds_tc)
-        peak_feat_sc = transpose_and_gather_feat(x, topk_inds_sc)
-        peak_feat_lc = transpose_and_gather_feat(x, topk_inds_lc)
-        # get the embeded position for each peak
-        # peak_pos_tc = transpose_and_gather_feat(pos_embedding, topk_inds_tc)
-        # peak_pos_sc = transpose_and_gather_feat(pos_embedding, topk_inds_sc)
-        # peak_pos_lc = transpose_and_gather_feat(pos_embedding, topk_inds_lc)
-
-        batched_feat_ec = torch.cat([peak_feat_lc, peak_feat_sc], dim=1).permute(1,0,2)
-        # batched_pos_ec = torch.cat([peak_pos_lc, peak_pos_sc], dim=1).permute(1,0,2)
-        batched_feat_tc = peak_feat_tc.permute(1,0,2)
-        # batched_pos_tc = peak_pos_tc.permute(1,0,2)
-
-        all_center_dets = (torch.stack([topk_xs_tc, topk_ys_tc], dim=-1) + 0.5) / x.new_tensor([feat_w, feat_h])
-
-        # all_cls_scores, all_bbox_preds = self.clusformer(batched_feat_ec, batched_feat_tc, None, None)
-        all_cls_scores = self.clusformer(batched_feat_ec, batched_feat_tc, None, None)
-        all_bbox_preds = all_cls_scores.new_zeros(8, 60, 8)
-        return all_cls_scores, all_bbox_preds, all_center_dets
-
     def forward_single(self, x):
         '''
             during training, all_cls_scores, all_bbox_preds, all_center_dets are replaced with lc, sc, tc
         '''
-        lc, sc, tc = x, x, x,
+        lc, sc, tc, ctx_ptr, offset = x, x, x, x, x
 
         for layer in self.longside_center:
             lc = layer(lc)
@@ -384,90 +290,40 @@ class ExtremeHeadV3(BaseDenseHead):
         for layer in self.target_center:
             tc = layer(tc)
 
-        all_cls_scores, all_bbox_preds, all_center_dets = lc, sc, tc
+        for layer in self.center_pointer:
+            ctx_ptr = layer(ctx_ptr)
 
-        if not self.training:
-            all_cls_scores, all_bbox_preds, all_center_dets = self.forward_transformer_single(lc, sc, tc, x)
-        # fomat result
-        result_list = [lc, sc, tc, all_cls_scores, all_bbox_preds, all_center_dets, x]
+        for layer in self.ec_offset:
+            offset = layer(offset)
 
-        return  result_list
+        result_list = [lc, sc, tc, ctx_ptr, offset]
+
+        return result_list
 
     def forward(self, feats):
 
-        return multi_apply(self.forward_single, feats)
+        return multi_apply(self.forward_single, feats) 
 
-
-    def get_targets(self,
-                    gt_bboxes_list,
-                    gt_labels_list,
-                    gt_masks_list,
-                    all_cls_scores_list, 
-                    all_bbox_preds_list,
-                    all_center_dets_list,
-                    multi_lvl_feats_list,
-                    feat_shapes,
-                    img_metas):
-        img_shape = img_metas[0]['pad_shape']
-        multi_lvl_feat_targets = []
-        multi_lvl_cls_scores = []
-        multi_lvl_bbox_preds = []
-        if gt_masks_list == None:
-            gt_masks_list = [None for _ in range(len(gt_bboxes_list))]
-        for k, feat_shape in enumerate(feat_shapes):
-            batched_feat_targets = []
-            heat_target = multi_apply(self._get_heat_targets_single,
-                                gt_bboxes_list,
-                                gt_labels_list,
-                                reg_range=self.regress_ratios[k],
-                                feat_shape=feat_shape,
-                                img_shape=img_shape)
-            for t in heat_target:
-                batched_feat_target = torch.stack(t, dim=0)
-                batched_feat_targets.append(batched_feat_target)
-            target_result = dict(
-                gt_target_center = batched_feat_targets[0],
-                gt_shortside_center = batched_feat_targets[1],
-                gt_longside_center = batched_feat_targets[2],
-                target_map = batched_feat_targets[3],
-            )
-            # get guided peak
-            lc_heat, sc_heat, tc_heat = all_cls_scores_list[k], all_bbox_preds_list[k], all_center_dets_list[k]
-            feat = multi_lvl_feats_list[k]
-            with torch.no_grad():
-                lc_heat = torch.where(lc_heat > target_result['gt_longside_center'] * 0.5, lc_heat, target_result['gt_longside_center']* 0.5)
-                sc_heat = torch.where(sc_heat > target_result['gt_shortside_center'] * 0.5, sc_heat, target_result['gt_shortside_center']* 0.5)
-                tc_heat = torch.where(tc_heat > target_result['gt_target_center'] * 0.5, tc_heat, target_result['gt_target_center']* 0.5)
-
-            all_cls_scores, all_bbox_preds, all_center_dets = self.forward_transformer_single(lc_heat, sc_heat, tc_heat, feat)
-            multi_lvl_cls_scores.append(all_cls_scores)
-            multi_lvl_bbox_preds.append(all_bbox_preds)
-            res = multi_apply(self._get_transformer_targets_single, gt_bboxes_list, gt_labels_list,
-                                gt_masks_list, all_cls_scores, all_bbox_preds, all_center_dets,
-                                img_metas, reg_range=self.regress_ratios[k], feat_shape=feat_shape,
-                                pad_shape=img_shape)
-            (labels_list, label_weights_list, bbox_targets_list,
-            bbox_weights_list, pos_inds_list, neg_inds_list) = res     
-            num_total_pos = sum((inds.numel() for inds in pos_inds_list))
-            num_total_neg = sum((inds.numel() for inds in neg_inds_list))                           
-            target_result.update(clusformer_target=(labels_list, label_weights_list, bbox_targets_list,
-                bbox_weights_list, num_total_pos, num_total_neg))
-            multi_lvl_feat_targets.append(target_result)
-
-        return multi_lvl_feat_targets, multi_lvl_cls_scores, multi_lvl_bbox_preds
-
-    def _get_heat_targets_single(self, 
-                                 gt_bboxes,
-                                 gt_labels,
-                                 reg_range,
-                                 feat_shape,
-                                 img_shape):
-
+    def _get_targets_single(self, 
+                            center_pointer,
+                            gt_bboxes,
+                            gt_labels,
+                            reg_range,
+                            feat_shape,
+                            img_shape):
+        """
+        center_pointer: [8, feat_h, feat_w], first dim: (sc_x, sc_y, ..., lc_x, lc_y, ...)
+        ec_offset: [4, feat_h, feat_w], first dim: (sc_off_x, sc_off_y, lc_off_x, lc_off_y)
+        """
         _, _, feat_h, feat_w = feat_shape
         img_h, img_w, _ = img_shape
         stride_h, stride_w = img_h / feat_h, img_w / feat_w
         # gt heatmaps: 0:target center 1: shortside center 2:longside center
         gt_heatmaps = [gt_bboxes.new_zeros((self.num_classes, feat_h, feat_w))  for _ in range(3)]
+        gt_offsets = gt_bboxes.new_zeros((self.ec_offset_cfg[-1][1][1], feat_h, feat_w),
+                                  dtype=torch.float32, device=gt_bboxes.device)         
+        # gt center pointer
+        gt_center_pointer = gt_bboxes.new_zeros((8, feat_h, feat_w))
         # sort valid gt bboxes for this level
         reg_min, reg_max = reg_range[0] * np.sqrt(img_h * img_w),\
                            reg_range[1] * np.sqrt(img_h * img_w)
@@ -519,107 +375,52 @@ class ExtremeHeadV3(BaseDenseHead):
                     cat = int(gt_label)
                     gt_heatmaps[v][cat,...] = gen_gaussian_targetR(gt_heatmaps[v][cat,...],
                                                               x, y, w, h, a, self.sigma_ratio)
+                    if v > 0:
+                        gt_offsets[v*2-2: v*2] =  set_offset2(center, gt_offsets[v*2-2: v*2], w, h, a, self.sigma_ratio)
+
+            gt_center_pointer = generate_center_pointer_map2(tc[0], sc, lc, center_pointer, gt_center_pointer, w, h, a, self.sigma_ratio)
+
 
         target_center_heat = gt_heatmaps[0]
         shortside_center_heat = gt_heatmaps[1]
         longside_center_heat = gt_heatmaps[2]
 
-        return target_center_heat, shortside_center_heat, longside_center_heat, target_map
+        return target_center_heat, shortside_center_heat, longside_center_heat, target_map, gt_center_pointer, gt_offsets
 
-    def _get_transformer_targets_single(self,
-                                        gt_bboxes,
-                                        gt_labels,
-                                        gt_masks,
-                                        all_cls_scores, 
-                                        all_bbox_preds,
-                                        all_center_dets,
-                                        img_meta,
-                                        reg_range,
-                                        feat_shape,
-                                        pad_shape):
+    def get_targets(self,
+                    center_pointer,
+                    gt_bboxes_list,
+                    gt_labels_list,
+                    gt_masks_list,
+                    feat_shapes,
+                    img_shape):
 
-        # TODO: Reject boxes of unvalid scales   
-        img_h, img_w, _ = img_meta['img_shape']
-        pad_h, pad_w, _ = pad_shape
-        
-        kpt_scaler = all_bbox_preds.new_tensor([img_w, img_h])
-        det_kpt_raw_pos = all_bbox_preds.clone()
-        gt_kpts_normalized = gt_bboxes[..., :2] / kpt_scaler
-        det_kpt_raw_pos[...,0::2] = det_kpt_raw_pos[...,0::2] * pad_w
-        det_kpt_raw_pos[...,1::2] = det_kpt_raw_pos[...,1::2] * pad_h
-        # prepare gt masks
-        scaled_gt_masks = gt_masks.to_tensor(dtype=torch.int32, device=gt_bboxes.device)
-        # generate pseudo rbox instance mask for matching
-        rboxes_raw_pos = keypoints2rbboxes(det_kpt_raw_pos, sc_first=True)
-        num_det = rboxes_raw_pos.size(0)
-        rboxes_instance_mask = np.zeros((num_det, pad_h, pad_w), np.float)
-        for k, det_rbox in enumerate(rboxes_raw_pos):
-            score_logits = all_cls_scores[k][0]
-            x, y, w, h, a = float(det_rbox[0]), float(det_rbox[1]), float(det_rbox[2]), float(det_rbox[3]), float(det_rbox[4])
-            pts = cv2.boxPoints(((x, y), (w, h), a))  
-            pts = np.int0(pts)
-            rboxes_instance_mask[k, ...] = cv2.drawContours(rboxes_instance_mask[k], [pts], -1, 1, -1)
-            rboxes_instance_mask[k, ...] = rboxes_instance_mask[k, ...] * float(score_logits)      
-        rboxes_instance_mask = torch.from_numpy(rboxes_instance_mask).to(dtype=gt_bboxes.dtype, device=gt_bboxes.device)
-        # assign and sample
-        assign_result = self.assigner.assign(all_cls_scores, all_center_dets, rboxes_instance_mask, gt_labels,
-                                            gt_kpts_normalized, scaled_gt_masks, img_meta)
-        sampling_result = self.sampler.sample(assign_result, all_bbox_preds,
-                                                gt_bboxes)
-        pos_inds = sampling_result.pos_inds
-        neg_inds = sampling_result.neg_inds
+        multi_lvl_feat_targets = []
+        if gt_masks_list == None:
+            gt_masks_list = [None for _ in range(len(gt_bboxes_list))]
+        for k, feat_shape in enumerate(feat_shapes):
+            batched_feat_targets = []
+            target = multi_apply(self._get_targets_single,
+                                center_pointer[k],
+                                gt_bboxes_list,
+                                gt_labels_list,
+                                reg_range=self.regress_ratios[k],
+                                feat_shape=feat_shape,
+                                img_shape=img_shape)
+            for t in target:
+                batched_feat_target = torch.stack(t, dim=0)
+                batched_feat_targets.append(batched_feat_target)
+            target_result = dict(
+                gt_target_center = batched_feat_targets[0],
+                gt_shortside_center = batched_feat_targets[1],
+                gt_longside_center = batched_feat_targets[2],
+                target_map = batched_feat_targets[3],
+                gt_center_pointer = batched_feat_targets[4],
+                gt_offsets = batched_feat_targets[5]
+            )
+            multi_lvl_feat_targets.append(target_result)
 
-        # label targets
-        labels = gt_bboxes.new_full((num_det, ),
-                                    self.num_classes,
-                                    dtype=torch.long)  
-        labels[pos_inds] = gt_labels[sampling_result.pos_assigned_gt_inds]
-        label_weights = gt_bboxes.new_ones(num_det)          
-
-        # bbox targets
-        bbox_targets = torch.zeros_like(all_bbox_preds)
-        bbox_weights = torch.zeros_like(all_bbox_preds)
-        bbox_weights[pos_inds] = 1.0
-
-        # pos_gt_bboxes_normalized = sampling_result.pos_gt_bboxes.clone()
-        # pos_gt_bboxes_normalized[:, 0] = pos_gt_bboxes_normalized[:, 0] / pad_w
-        # pos_gt_bboxes_normalized[:, 1] = pos_gt_bboxes_normalized[:, 1] / pad_h
-        # pos_gt_bboxes_normalized[:, 2:4] = pos_gt_bboxes_normalized[:, 2:4] / np.sqrt(pad_w * pad_h)
-
-        # # generate corner pts
-        # corner_pts = []
-        # for gt_rbox in pos_gt_bboxes_normalized:
-        #     x, y, w, h, a = float(gt_rbox[0]), float(gt_rbox[1]), float(gt_rbox[2]), float(gt_rbox[3]), float(gt_rbox[4])
-        #     a = a * 180 / np.pi
-        #     pts = cv2.boxPoints(((x, y), (w, h), a))
-        #     corner_pts.append(pts) 
-        # # calculate edge centers for each rbox
-        # corner_pts = torch.tensor(corner_pts, dtype=torch.float32, device=gt_bboxes.device)
-        # if corner_pts.shape[0] is not 0:
-        #     long_side_center, short_side_center, _, num_box = generate_ec_from_corner_pts(corner_pts) 
-        # # generate targets for clusformer
-        # long_side_center = long_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
-        # short_side_center = short_side_center.view(2, num_box, 2).permute(1,0,2).contiguous()
-        # valid_bbox_pred = all_bbox_preds[pos_inds].view(-1, 4, 2)
-        # # determine the relation between a pair of ec
-        # valid_bbox_lc = long_side_center
-        # valid_bbox_sc = short_side_center
-        # valid_bbox_lc_r = torch.flip(valid_bbox_lc, [1])
-        # valid_bbox_sc_r = torch.flip(valid_bbox_sc, [1])
-        # gt_lc0_dist = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc, dim=-1).sum(-1)
-        # gt_lc0_dist_r = torch.norm(valid_bbox_pred[:,:2,:]-valid_bbox_lc_r, dim=-1).sum(-1)
-        # gt_sc0_dist = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc, dim=-1).sum(-1)
-        # gt_sc0_dist_r = torch.norm(valid_bbox_pred[:,2:,:]-valid_bbox_sc_r, dim=-1).sum(-1)
-        # target_lc = torch.where((gt_lc0_dist < gt_lc0_dist_r).view(-1,1,1), valid_bbox_lc, valid_bbox_lc_r)
-        # target_sc = torch.where((gt_sc0_dist < gt_sc0_dist_r).view(-1,1,1), valid_bbox_sc, valid_bbox_sc_r)            
-        # target_bboxes = torch.cat([target_lc, target_sc], dim=1)
-
-        # pos_gt_bboxes_targets = target_bboxes.view(-1, 8)
-        # bbox_targets[pos_inds] = pos_gt_bboxes_targets     
-           
-        return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
-                neg_inds)
-
+        return multi_lvl_feat_targets
 
     def loss_heat_single(self, lc, sc, tc, targets):
         
@@ -656,57 +457,38 @@ class ExtremeHeadV3(BaseDenseHead):
         )
 
         return lc_det_loss / 3, sc_det_loss / 3, tc_det_loss / 3
-    
-    def loss_clusformer_single(self, all_cls_scores, all_bbox_preds, target):
 
-        (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
-         num_total_pos, num_total_neg) = target['clusformer_target']
+    def loss_reg_single(self, ctx_ptr, ec_offset, targets):
 
-        labels = torch.cat(labels_list, 0)
-        label_weights = torch.cat(label_weights_list, 0)
-        bbox_targets = torch.cat(bbox_targets_list, 0)
-        bbox_weights = torch.cat(bbox_weights_list, 0)
-        # classification loss
-        cls_scores = all_cls_scores.reshape(-1, self.num_classes+1).softmax(-1)
-        # construct weighted avg_factor to match with the official DETR repo
-        cls_avg_factor = num_total_pos * 1.0 + \
-            num_total_neg * 0
-        cls_avg_factor = max(cls_avg_factor, 1)
-        clusformer_cls_loss = self.loss_clusformer_cls(cls_scores, 
-                labels, label_weights, avg_factor=cls_avg_factor)
-
-        # Compute the average number of gt boxes across all gpus, for
-        # normalization purposes
-        # num_total_pos = clusformer_cls_loss.new_tensor([num_total_pos])
-        # num_total_pos = torch.clamp(reduce_mean(num_total_pos), min=1).item()
-        # bbox_preds = all_bbox_preds.reshape(-1, 8)
-        # clusformer_reg_loss = self.loss_clusformer_reg(bbox_preds, 
-        #         bbox_targets, bbox_weights, avg_factor=num_total_pos)
-
-        # return clusformer_reg_loss / 2, clusformer_cls_loss / 2
-        return clusformer_cls_loss,
+        gt_center_pointer = targets['gt_center_pointer']
+        gt_offsets = targets['gt_offsets']
+        gt_center_pointer_mask = gt_center_pointer.ne(0).sum(1).gt(0).unsqueeze(1).type_as(ctx_ptr)
+        gt_offset_mask = gt_offsets.ne(0).type_as(ec_offset)
+        pointer_loss = self.loss_pointer(ctx_ptr,
+                                        gt_center_pointer,
+                                        gt_center_pointer_mask,
+                                        avg_factor=max(1, gt_center_pointer_mask.sum()))
+        offset_loss = self.loss_offsets(ec_offset,
+                                        gt_offsets,
+                                        gt_offset_mask,
+                                        avg_factor=max(1, gt_center_pointer_mask.sum()))
+        return pointer_loss, offset_loss
 
     def loss(self,
              longside_center_heats,
              shortside_center_heats,
              target_center_heats,
-             all_cls_scores, 
-             all_bbox_preds,
-             all_center_dets,
-             multi_lvl_feats,
+             center_pointer,
+             ec_offset,
              gt_bboxes,
              gt_labels,
              gt_masks,
              img_metas,
              gt_bboxes_ignore=None):
 
-        targets, multi_lvl_cls_scores, multi_lvl_bbox_preds = self.get_targets( gt_bboxes, gt_labels, gt_masks,
-                                    all_cls_scores, 
-                                    all_bbox_preds,
-                                    all_center_dets,
-                                    multi_lvl_feats,
+        targets = self.get_targets( center_pointer, gt_bboxes, gt_labels, gt_masks,
                                     [feat.shape for feat in target_center_heats],
-                                    img_metas)
+                                    img_metas[0]['pad_shape'])
 
         lc_det_loss, sc_det_loss, tc_det_loss = multi_apply(self.loss_heat_single,
                                 longside_center_heats,
@@ -714,74 +496,112 @@ class ExtremeHeadV3(BaseDenseHead):
                                 target_center_heats,
                                 targets)
 
-        clusformer_cls_loss, = multi_apply(self.loss_clusformer_single,
-                                multi_lvl_cls_scores, 
-                                multi_lvl_bbox_preds,
-                                targets)
+        pointer_loss, offset_loss= multi_apply(self.loss_reg_single,
+                                    center_pointer,
+                                    ec_offset,
+                                    targets)
 
         loss_dict = dict(lc_det_loss=lc_det_loss,
                          sc_det_loss=sc_det_loss,
                          tc_det_loss=tc_det_loss,
-                         clusformer_cls_loss=clusformer_cls_loss)
-        # clusformer_reg_loss, clusformer_cls_loss = multi_apply(self.loss_clusformer_single,
-        #                         multi_lvl_cls_scores, 
-        #                         multi_lvl_bbox_preds,
-        #                         targets)
-
-        # loss_dict = dict(lc_det_loss=lc_det_loss,
-        #                  sc_det_loss=sc_det_loss,
-        #                  tc_det_loss=tc_det_loss,
-        #                  clusformer_cls_loss=clusformer_cls_loss,
-        #                  clusformer_reg_loss=clusformer_reg_loss)
-
-        if self.train_cache_cfg.get('save_target', False):
-            data_dict = dict(
-                # Training Targets
-                # BUG:targets are list(dict) instead of dict(list)
-                type='TrT',
-                data=targets,
-                img_metas=img_metas
-            )
-            self.data_queue.put(data_dict)
-
-        if self.train_cache_cfg.get('save_output', False):
-            data_dict = dict(
-                # Training Outputs
-                type='TrO',
-                data=dict(
-                    lc=longside_center_heats,
-                    sc=shortside_center_heats,
-                    tc=target_center_heats,
-                ),
-                img_metas=img_metas,
-            )
-            self.data_queue.put(data_dict)
+                         offset_loss=offset_loss,
+                         pointer_loss=pointer_loss)
 
         return loss_dict
 
-    def decode_clusformer_single(self,
-                                all_cls_scores,
-                                all_bbox_preds,
-                                all_center_dets,
-                                num_dets):
+    def decode_heatmap_single(self,
+                            tc_heat,
+                            lc_heat,
+                            sc_heat,
+                            ctx_ptr,
+                            ec_offset,
+                            k_pts,
+                            num_dets,
+                            ec_conf_thr,
+                            tc_conf_thr,
+                            kernel=3,
+                            **kwargs):
+        # TODO:support multi-class detection
 
-        batch = all_bbox_preds.size(0)
-        all_cls_scores = all_cls_scores.softmax(dim=-1)
-        # valid_ind = all_cls_scores[...,1] > 0.5
-        valid_bbox_preds = all_bbox_preds    
-        valid_bbox_scores = all_cls_scores[..., 0]
-        valid_bbox_clses = torch.zeros_like(valid_bbox_scores)
+        batch, _, height, width = tc_heat.size()
+        if k_pts < 1:
+            return tc_heat.new_zeros((batch, 0, 8)), tc_heat.new_zeros((batch, 0, 1)), tc_heat.new_zeros((batch, 0, 1))
 
-        scores, inds = torch.topk(valid_bbox_scores, num_dets)
+        lc_heat, sc_heat, tc_heat = lc_heat.sigmoid(), sc_heat.sigmoid(), tc_heat.sigmoid()
+
+        tc_heat = get_local_maximum(tc_heat, kernel=kernel)
+        sc_heat = get_local_maximum(sc_heat, kernel=kernel)
+        lc_heat = get_local_maximum(lc_heat, kernel=kernel)
+
+        tc_scores, tc_inds, tc_clses, tc_ys, tc_xs = get_topk_from_heatmap(tc_heat, k=k_pts)
+        sc_scores, _, _, sc_ys, sc_xs = get_topk_from_heatmap(sc_heat, k=k_pts)
+        lc_scores, _, _, lc_ys, lc_xs = get_topk_from_heatmap(lc_heat, k=k_pts)
+
+        tc_pos = torch.stack((tc_xs, tc_ys), dim=-1) + 0.5
+        sc_pos = torch.stack((sc_xs, sc_ys), dim=-1) + 0.5
+        lc_pos = torch.stack((lc_xs, lc_ys), dim=-1) + 0.5
+
+        center_pointers = transpose_and_gather_feat(ctx_ptr, tc_inds)
+        center_pointers = center_pointers.view(batch, -1, 4, 2)
+        tc_pointer_res = tc_pos.unsqueeze(-2).repeat(1,1,4,1) + center_pointers
+        tc_pointer_res_rpt = tc_pointer_res.unsqueeze(-1).repeat(1,1,1,1,k_pts).transpose(-1,-2)
+        sc_pos_rpt = sc_pos.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1,1)
+        lc_pos_rpt = lc_pos.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1,1)
+        sc_ptr_l2_dist = torch.norm(tc_pointer_res_rpt[:,:,:2,:,:] - sc_pos_rpt, dim=-1)
+        lc_ptr_l2_dist = torch.norm(tc_pointer_res_rpt[:,:,2:,:,:] - lc_pos_rpt, dim=-1)
+
+        # normalize l2 dist
+        sc_ptr_l2_dist = sc_ptr_l2_dist / np.math.sqrt(width * height)
+        lc_ptr_l2_dist = lc_ptr_l2_dist / np.math.sqrt(width * height)
+
+        # generate scores
+        sc_scores_rpt = sc_scores.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1)
+        lc_scores_rpt = lc_scores.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1)
+        # calculate final score using gaussian function
+        # final_score = score * e ^ -(x^2 / 2*ptr_dist^2)
+        sc_scores_rpt_final = sc_scores_rpt * torch.exp(-sc_ptr_l2_dist.pow(2) / (2*ctx_ptr.new_tensor(self.sc_ptr_sigma).pow(2)))
+        lc_scores_rpt_final = lc_scores_rpt * torch.exp(-lc_ptr_l2_dist.pow(2) / (2*ctx_ptr.new_tensor(self.lc_ptr_sigma).pow(2)))
+        sc_kpt_score, sc_kpt_ind = sc_scores_rpt_final.max(dim=-1, keepdim=True)
+        lc_kpt_score, lc_kpt_ind = lc_scores_rpt_final.max(dim=-1, keepdim=True)
+        sc_kpt_pos = sc_pos_rpt.gather(3, sc_kpt_ind.unsqueeze(-1).repeat(1,1,1,1,2)).squeeze(3)
+        lc_kpt_pos = lc_pos_rpt.gather(3, lc_kpt_ind.unsqueeze(-1).repeat(1,1,1,1,2)).squeeze(3)
+        # select key point or regressed edge center based on score
+        sc_kpt_pos = torch.where(sc_kpt_score > ec_conf_thr, sc_kpt_pos, tc_pointer_res[:,:,:2,:])
+        lc_kpt_pos = torch.where(lc_kpt_score > ec_conf_thr, lc_kpt_pos, tc_pointer_res[:,:,2:,:])
+        sc_kpt_score = torch.where(sc_kpt_score > ec_conf_thr, sc_kpt_score, sc_kpt_score.new_full(sc_kpt_score.shape, ec_conf_thr))
+        lc_kpt_score = torch.where(lc_kpt_score > ec_conf_thr, lc_kpt_score, lc_kpt_score.new_full(lc_kpt_score.shape, ec_conf_thr))
+
+        # sample offset using grid_sample
+        # normalize kpt pos to [-1, 1]
+        pos_norm_scaler = sc_kpt_pos.new_tensor([width // 2, height // 2])
+        sc_kpt_pos_norm = (sc_kpt_pos - pos_norm_scaler) / pos_norm_scaler
+        lc_kpt_pos_norm = (lc_kpt_pos - pos_norm_scaler) / pos_norm_scaler
+        sc_kpt_off = F.grid_sample(ec_offset[:,:2,...], sc_kpt_pos_norm, 'bilinear', 'zeros', align_corners=False)
+        lc_kpt_off = F.grid_sample(ec_offset[:,2:,...], lc_kpt_pos_norm, 'bilinear', 'zeros', align_corners=False)
+        sc_kpt_pos = sc_kpt_pos.floor() + 0.5 + sc_kpt_off.permute(0,2,3,1)
+        lc_kpt_pos = lc_kpt_pos.floor() + 0.5 + lc_kpt_off.permute(0,2,3,1)
+
+        # generate final results
+        scores = (tc_scores * 2 + sc_kpt_score.squeeze(-1).sum(-1) + lc_kpt_score.squeeze(-1).sum(-1)) / 6
+
+        # reject box has low center score
+        low_score_ind = tc_scores < tc_conf_thr
+        scores -= low_score_ind.float()
+
+        bboxes = torch.cat((sc_kpt_pos, lc_kpt_pos), dim=2)
+        clses = tc_clses.view(batch, -1, 1)
+        scores, inds = torch.topk(scores, num_dets)
         scores = scores.unsqueeze(2)
 
-        bboxes = valid_bbox_preds.view(batch, -1, 8)
+        bboxes = bboxes.view(batch, -1, 8)
         bboxes = gather_feat(bboxes, inds)
 
-        clses = valid_bbox_clses.unsqueeze(-1)
         clses = gather_feat(clses, inds).float()
+        # normalize bbox predictions to range (0, 1)
+        bboxes[:, 0::2] = bboxes[:, 0::2] / width
+        bboxes[:, 1::2] = bboxes[:, 1::2] / height
 
-        return bboxes, scores, clses
+        return bboxes.clamp(0., 1.), scores, clses
 
     def _get_bboxes_single(self,
                             all_lvl_bbox_kpts,
@@ -796,6 +616,7 @@ class ExtremeHeadV3(BaseDenseHead):
         
         all_lvl_rboxes = []
         for bbox_kpts in all_lvl_bbox_kpts:
+            bbox_kpts = bbox_kpts.clamp(0, 1)
             rboxes = keypoints2rbboxes(bbox_kpts, sc_first=True)
             all_lvl_rboxes.append(rboxes)
 
@@ -856,10 +677,8 @@ class ExtremeHeadV3(BaseDenseHead):
                     list_longside_center,
                     list_shortside_center,
                     list_target_center,
-                    list_all_cls_scores,
-                    list_all_bbox_preds,
-                    list_all_center_dets,
-                    list_all_lvl_feats,
+                    list_center_pointer,
+                    list_ec_offset,
                     img_metas,
                     rescale=False,
                     with_nms=True):
@@ -873,10 +692,8 @@ class ExtremeHeadV3(BaseDenseHead):
                     lc=list_longside_center,
                     sc=list_shortside_center,
                     tc=list_target_center,
-                ),
-                boxes=dict(
-                    bbox_pred=list_all_bbox_preds,
-                    box_cls=list_all_cls_scores                    
+                    cp=list_center_pointer,
+                    off=list_ec_offset,
                 ),
                 img_metas=img_metas
             )
@@ -887,20 +704,29 @@ class ExtremeHeadV3(BaseDenseHead):
 
         assert len(list_longside_center) == len(list_shortside_center)  and \
             len(list_shortside_center) == len(list_target_center) and \
-            len(list_longside_center) == len(list_all_cls_scores) and \
-            len(list_all_cls_scores) == len(list_all_bbox_preds) and \
-            len(list_all_bbox_preds) == len(list_all_center_dets) and \
-            len(list_all_center_dets) == len(self.list_num_pkts_per_lvl)
+            len(list_longside_center) == len(list_center_pointer) and \
+            len(list_longside_center) == len(list_ec_offset) and \
+            len(list_center_pointer) == len(self.list_num_pkts_per_lvl)
 
         if self.valid_size_range is not None:
             assert len(self.valid_size_range) == len(list_target_center)
 
+        # result_list = []
+        # result_list = [(torch.zeros((1, 6), device=list_longside_center[-1].device, dtype=torch.float32),
+        #                 torch.zeros((1,), device=list_longside_center[-1].device, dtype=torch.int64))]
+
+
         multi_lvl_bbox_kpts, multi_lvl_scores, multi_lvl_clses = multi_apply(
-            self.decode_clusformer_single,
-            list_all_cls_scores,
-            list_all_bbox_preds,
-            list_all_center_dets,
+            self.decode_heatmap_single,
+            list_target_center,
+            list_longside_center,
+            list_shortside_center,
+            list_center_pointer,
+            list_ec_offset,
             self.list_num_pkts_per_lvl,
+            self.list_num_dets_per_lvl,
+            ec_conf_thr=self.ec_conf_thr,
+            tc_conf_thr=self.tc_conf_thr,
         )
         for img_id in range(len(img_metas)):
             all_lvl_bbox_kpts = [kpts[img_id][None] for kpts in multi_lvl_bbox_kpts]

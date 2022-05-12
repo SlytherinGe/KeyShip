@@ -30,6 +30,8 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         center_pointer_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     8))],
+        ec_offset_cfg = BASE_CONV_SETTING + \
+                            [('conv',     ('out',     4))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
             type='GaussianFocalLoss',
@@ -38,7 +40,10 @@ model = dict(
             loss_weight=1.0               
         ),
         loss_pointer=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=0.1
+            type='SmoothL1Loss', beta=1/8, loss_weight=0.05
+        ),
+        loss_offsets=dict(
+            type='SmoothL1Loss', beta=1/8, loss_weight=0.1
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
@@ -57,6 +62,8 @@ model = dict(
         num_dets_per_lvl = [0,60],
         ec_conf_thr = 0.01,
         tc_conf_thr = 0.1,
+        sc_ptr_sigma = 0.01,
+        lc_ptr_sigma = 0.1,
         valid_size_range = [(-1,0), (-1, 2),],
         score_thr = 0.05,
         nms_cfg = dict(type='rnms', iou_thr=0.20),
@@ -111,7 +118,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=6,
     workers_per_gpu=16,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
@@ -135,28 +142,17 @@ load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SS
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp4/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp6/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
-# optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
-# optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
+optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 # optimizer
-optimizer = dict(
-    type='AdamW',
-    lr=0.008,
-    weight_decay=0.0001,
-    paramwise_cfg=dict(
-        custom_keys={'backbone': dict(lr_mult=1.0, decay_mult=1.0)}))
+optimizer = dict(type='Adam', lr=0.001)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
 # lr_config = dict(policy='step', step=[100])
 runner = dict(type='EpochBasedRunner', max_epochs=210)
-lr_config = dict(
-    policy='cyclic',
-    warmup=None,
-    cyclic_times=1,
-    target_ratio=(10, 1e-2))
-# runner = dict(type='EpochBasedRunner', max_epochs=100)
-checkpoint_config = dict(interval=3)
+lr_config = dict(policy='step', step=[150, 200])
+checkpoint_config = dict(interval=21)

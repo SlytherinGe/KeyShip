@@ -354,6 +354,7 @@ class ExtremeHeadV2(BaseDenseHead):
         gt_heatmaps = [gt_bboxes.new_zeros((self.num_classes, feat_h, feat_w))  for _ in range(3)]
         # gt offsets: the first demension is the same as gt heatmaps
         # in the second demension index 0->x, 1->y
+        # BUG: *2 在 len 里面
         gt_offsets = gt_bboxes.new_zeros((len(self.offset_types*2), feat_h, feat_w),
                                   dtype=torch.float32, device=gt_bboxes.device) 
         gt_centripetals = [gt_bboxes.new_zeros((self.centipital_shift_channels, feat_h, feat_w)) for _ in range(2)]
