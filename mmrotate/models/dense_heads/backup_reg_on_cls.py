@@ -229,8 +229,7 @@ class ExtremeHeadV4(BaseDenseHead):
 
     def _init_ec_offset_layers(self):
 
-        self.sc_offset = self._make_layers(self.ec_offset_cfg, 256)
-        self.lc_offset = self._make_layers(self.ec_offset_cfg, 256)
+        self.ec_offset = self._make_layers(self.ec_offset_cfg, 512)
 
     def _init_layers(self):
 
@@ -271,19 +270,12 @@ class ExtremeHeadV4(BaseDenseHead):
         self.center_pointer[-1].conv.bias.data.fill_(bias_init)      
 
         # init ec offset
-        for m in self.sc_offset:
+        for m in self.ec_offset:
             if isinstance(m, nn.Upsample):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
-        self.sc_offset[-1].conv.bias.data.fill_(bias_init) 
-
-        for m in self.lc_offset:
-            if isinstance(m, nn.Upsample):
-                continue
-            elif isinstance(m.conv, nn.Conv2d):
-                normal_init(m.conv, std=0.01)
-        self.lc_offset[-1].conv.bias.data.fill_(bias_init)
+        self.ec_offset[-1].conv.bias.data.fill_(bias_init) 
         
     def forward_single(self, x):
         '''
@@ -295,9 +287,8 @@ class ExtremeHeadV4(BaseDenseHead):
             lc = layer(lc)
         for layer in self.shortside_center[:-1]:
             sc = layer(sc)
-        
-        off_lc = self.lc_offset[-1](lc)
-        off_sc = self.sc_offset[-1](sc)
+        for layer in self.ec_offset:
+            offset = layer(torch.cat([sc, lc], dim=1))
 
         lc = self.longside_center[-1](lc)
         sc = self.shortside_center[-1](sc)
@@ -308,8 +299,6 @@ class ExtremeHeadV4(BaseDenseHead):
         for layer in self.center_pointer:
             ctx_ptr = layer(tc)
         tc = self.target_center[-1](tc)
-
-        offset = torch.cat([off_sc, off_lc], dim=1)
 
         result_list = [lc, sc, tc, ctx_ptr, offset]
 

@@ -29,7 +29,7 @@ model = dict(
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
         center_pointer_cfg = [('conv',     ('out',     8))],
-        ec_offset_cfg = [('conv',     ('out',     4))],
+        ec_offset_cfg = [('conv',     ('out',     2))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
             type='GaussianFocalLoss',
@@ -116,7 +116,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=4,
     workers_per_gpu=16,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
@@ -140,15 +140,19 @@ load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SS
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp7/'
+work_dir = '../exp_results/mmlab_results/hrsid/benchmark/extreme_ship'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
-optimizer = dict(type='Adam', lr=0.0012)
+optimizer = dict(type='Adam', lr=0.0006)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
 # lr_config = dict(policy='step', step=[100])
 runner = dict(type='EpochBasedRunner', max_epochs=210)
-lr_config = dict(policy='step', step=[150, 200])
+lr_config = dict(policy='step',
+                warmup='linear',
+                warmup_iters=50,
+                warmup_ratio=1.0 / 3,
+                 step=[150, 200])
 checkpoint_config = dict(interval=21)
