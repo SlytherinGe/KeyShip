@@ -90,4 +90,16 @@ class ExtremeShip(RotatedBaseDetector):
         return bbox_results
 
     def aug_test(self, imgs, img_metas, rescale=False):
-        raise NotImplementedError
+        """Test with augmentations.
+
+        If rescale is False, then returned bboxes and masks will fit the scale
+        of imgs[0].
+        """
+        x = self.extract_feats(imgs)
+        bbox_list = self.bbox_head.aug_test(
+            x, img_metas, rescale=rescale)
+        bbox_results = [
+            rbbox2result(det_bboxes, det_labels, self.bbox_head.num_classes)
+            for det_bboxes, det_labels in bbox_list
+        ]
+        return bbox_results

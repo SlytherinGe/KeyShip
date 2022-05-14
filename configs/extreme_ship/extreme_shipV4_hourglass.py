@@ -29,7 +29,7 @@ model = dict(
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
         center_pointer_cfg = [('conv',     ('out',     8))],
-        ec_offset_cfg = [('conv',     ('out',     4))],
+        ec_offset_cfg = [('conv',     ('out',     2))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
             type='GaussianFocalLoss',
@@ -64,7 +64,7 @@ model = dict(
         lc_ptr_sigma = 0.01,
         valid_size_range = [(-1,0), (-1, 2),],
         score_thr = 0.05,
-        nms_cfg = dict(type='rnms', iou_thr=0.20),
+        nms = dict(type='rnms', iou_thr=0.20),
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
         max_per_img=100
     ))
@@ -75,10 +75,9 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(640, 640)),
+    dict(type='RResize', img_scale=[(640, 640), (560, 560), (480, 480)],multiscale_mode='value'),
     dict(
         type='RRandomFlip',
-        # flip_ratio=0.0,
         flip_ratio=[0.25, 0.25, 0.25],
         direction=['horizontal', 'vertical', 'diagonal'],
         version=angle_version),
@@ -94,7 +93,7 @@ train_pipeline = [
     dict(type='ContrastTransform', level=3, prob=0.3),
     dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(640, 640)),
+    dict(type='Pad', pad_to_square=True),
     # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
@@ -104,12 +103,12 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(640, 640),
+        img_scale=[(640, 640), (560, 560), (480, 480)],
         flip=False,
         transforms=[
             dict(type='RResize'),
             dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size=(640, 640)),
+            dict(type='Pad', pad_to_square=True),
             dict(type='DefaultFormatBundle'),
             dict(type='Collect', keys=['img'])
         ])
@@ -140,7 +139,7 @@ load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SS
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp7/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp8/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
