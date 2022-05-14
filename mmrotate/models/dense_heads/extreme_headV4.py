@@ -1,16 +1,15 @@
-from audioop import mul
-from ctypes import pointer
+from inspect import signature
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
+from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init, build_norm_layer, build_activation_layer
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
 import cv2
-from mmcv.runner.base_module import BaseModule
 
-from mmrotate.core import multiclass_nms_rotated
-from mmdet.core import build_assigner, build_sampler, reduce_mean
+from mmrotate.core import (multiclass_nms_rotated,
+                           aug_multiclass_nms_rotated,
+                           bbox_mapping_back)
 from ..builder import ROTATED_HEADS, build_loss
 from mmdet.core import multi_apply
 from ..utils import (gen_gaussian_targetR, get_local_maximum,
@@ -19,7 +18,7 @@ from ..utils import (gen_gaussian_targetR, get_local_maximum,
                      sort_valid_gt_bboxes, get_target_map,
                      generate_ec_from_corner_pts,
                      generate_center_pointer_map2,
-                     set_offset2)
+                     set_offset2, ORConv2d)
 
 
 INF = 1e8
@@ -673,7 +672,7 @@ class ExtremeHeadV4(BaseDenseHead):
                                   det_rboxes.new_tensor([stride_w, stride_h, stride_l, stride_l])
 
         if with_nms:
-            _nms_cfg = self.test_cfg.get('nms_cfg', dict(type='rnms', iou_thr=0.05))
+            _nms_cfg = self.test_cfg.get('nms', dict(type='rnms', iou_thr=0.05))
             padding = det_scores.new_zeros(det_scores.shape[0], 1)
             det_scores = torch.cat([det_scores, padding], dim=1)
             det_rboxes, det_clses = multiclass_nms_rotated(det_rboxes, det_scores, self.test_cfg.score_thr, _nms_cfg, self.test_cfg.max_per_img)
@@ -683,7 +682,7 @@ class ExtremeHeadV4(BaseDenseHead):
         if det_rboxes.size(0) < 1:
             # add a default empty result for eval
             det_rboxes = det_rboxes.new_zeros((1,6))
-            det_clses = det_clses.new_zeros((1,))
+            det_clses = det_clses.new_zeros((1,1))
 
         return det_rboxes, det_clses
 
@@ -757,6 +756,8 @@ class ExtremeHeadV4(BaseDenseHead):
             result_list.append(results)
         return result_list
 
+
+
     def forward_train(self,
                         x,
                         img_metas,
@@ -777,3 +778,99 @@ class ExtremeHeadV4(BaseDenseHead):
         else:
             proposal_list = self.get_bboxes(*outs[:6], img_metas, cfg=proposal_cfg, extra_data=outs[6:])
             return losses, proposal_list
+    
+    def aug_test(self, feats, img_metas, rescale=False):
+        """Test det bboxes with test time augmentation, can be applied in
+        DenseHead except for ``RPNHead`` and its variants, e.g., ``GARPNHead``,
+        etc.
+
+        Args:
+            feats (list[Tensor]): the outer list indicates test-time
+                augmentations and inner Tensor should have a shape NxCxHxW,
+                which contains features for all images in the batch.
+            img_metas (list[list[dict]]): the outer list indicates test-time
+                augs (multiscale, flip, etc.) and the inner list indicates
+                images in a batch. each dict has image information.
+            rescale (bool, optional): Whether to rescale the results.
+                Defaults to False.
+        Returns:
+            list[tuple[Tensor, Tensor]]: Each item in result_list is 2-tuple.
+                The first item is ``bboxes`` with shape (n, 6),
+                where 6 represent (x, y, w, h, a, score).
+                The shape of the second tensor in the tuple is ``labels``
+                with shape (n,). The length of list should always be 1.
+        """
+        # check with_nms argument
+        gb_sig = signature(self.get_bboxes)
+        gb_args = [p.name for p in gb_sig.parameters.values()]
+        gbs_sig = signature(self._get_bboxes_single)
+        gbs_args = [p.name for p in gbs_sig.parameters.values()]
+        assert ('with_nms' in gb_args) and ('with_nms' in gbs_args), \
+            f'{self.__class__.__name__}' \
+            ' does not support test-time augmentation'
+
+        aug_bboxes = []
+        aug_scores = []
+        for x, img_meta in zip(feats, img_metas):
+            # only one image in the batch
+            outs = self.forward(x)
+            bbox_outputs = self.get_bboxes(
+                *outs,
+                img_metas=img_meta,
+                rescale=False,
+                with_nms=False)[0]
+            aug_bboxes.append(bbox_outputs[0])
+            aug_scores.append(bbox_outputs[1])
+
+        # after merging, bboxes will be rescaled to the original image size
+        merged_bboxes, merged_scores = self.merge_aug_bboxes(
+            aug_bboxes, aug_scores, img_metas)
+
+        merged_scores, merged_labels = torch.max(merged_scores, dim=1)
+        merged_bboxes = torch.cat([merged_bboxes, merged_scores[:, None]], -1)
+        if merged_bboxes.numel() == 0:
+            return [
+                (merged_bboxes, merged_labels),
+            ]
+
+        det_bboxes, det_labels = aug_multiclass_nms_rotated(
+            merged_bboxes, merged_labels, self.test_cfg.score_thr,
+            self.test_cfg.nms, self.test_cfg.max_per_img, self.num_classes)
+
+        if rescale:
+            # angle should not be rescaled
+            merged_bboxes[:, :4] *= merged_bboxes.new_tensor(
+                img_metas[0][0]['scale_factor'])
+
+        return [
+            (det_bboxes, det_labels),
+        ]
+
+    def merge_aug_bboxes(self, aug_bboxes, aug_scores, img_metas):
+        """Merge augmented detection bboxes and scores.
+
+        Args:
+            aug_bboxes (list[Tensor]): shape (n, 4*#class)
+            aug_scores (list[Tensor] or None): shape (n, #class)
+            img_shapes (list[Tensor]): shape (3, ).
+
+        Returns:
+            tuple[Tensor]: ``bboxes`` with shape (n,4), where
+            4 represent (tl_x, tl_y, br_x, br_y)
+            and ``scores`` with shape (n,).
+        """
+        recovered_bboxes = []
+        for bboxes, img_info in zip(aug_bboxes, img_metas):
+            img_shape = img_info[0]['img_shape']
+            scale_factor = img_info[0]['scale_factor']
+            flip = img_info[0]['flip']
+            flip_direction = img_info[0]['flip_direction']
+            bboxes = bbox_mapping_back(bboxes, img_shape, scale_factor, flip,
+                                       flip_direction)
+            recovered_bboxes.append(bboxes)
+        bboxes = torch.cat(recovered_bboxes, dim=0)
+        if aug_scores is None:
+            return bboxes
+        else:
+            scores = torch.cat(aug_scores, dim=0)
+            return bboxes, scores
