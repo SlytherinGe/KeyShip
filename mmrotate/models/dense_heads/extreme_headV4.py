@@ -671,21 +671,23 @@ class ExtremeHeadV4(BaseDenseHead):
             det_rboxes[..., :4] = det_rboxes[..., :4] /\
                                   det_rboxes.new_tensor([stride_w, stride_h, stride_l, stride_l])
 
+        if det_rboxes.size(0) < 1:
+            # add a default empty result for eval
+            # TODO:if there are multiple classes, this should be changed
+            det_rboxes = det_rboxes.new_zeros((1,5))
+            det_clses = det_clses.new_zeros((1,1))
+            det_scores = det_scores.new_zeros((1,1)) * -1.
+
         if with_nms:
             _nms_cfg = self.test_cfg.get('nms', dict(type='rnms', iou_thr=0.05))
             padding = det_scores.new_zeros(det_scores.shape[0], 1)
             det_scores = torch.cat([det_scores, padding], dim=1)
             det_rboxes, det_clses = multiclass_nms_rotated(det_rboxes, det_scores, self.test_cfg.score_thr, _nms_cfg, self.test_cfg.max_per_img)
-        else:
-            det_rboxes = torch.cat([det_rboxes, det_scores], dim=-1)
         
-        if det_rboxes.size(0) < 1:
-            # add a default empty result for eval
-            det_rboxes = det_rboxes.new_zeros((1,6))
-            det_clses = det_clses.new_zeros((1,1))
-
-        return det_rboxes, det_clses
-
+            return det_rboxes, det_clses
+        
+        else:
+            return det_rboxes, det_scores
 
     def get_bboxes(self,
                     list_longside_center,
