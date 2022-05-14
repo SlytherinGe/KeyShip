@@ -335,7 +335,7 @@ class ExtremeHeadV4(BaseDenseHead):
         stride_h, stride_w = img_h / feat_h, img_w / feat_w
         # gt heatmaps: 0:target center 1: shortside center 2:longside center
         gt_heatmaps = [gt_bboxes.new_zeros((self.num_classes, feat_h, feat_w))  for _ in range(3)]
-        gt_offsets = gt_bboxes.new_zeros((self.ec_offset_cfg[-1][1][1], feat_h, feat_w),
+        gt_offsets = gt_bboxes.new_zeros((self.ec_offset_cfg[-1][1][1]*2, feat_h, feat_w),
                                   dtype=torch.float32, device=gt_bboxes.device)         
         # gt center pointer
         gt_center_pointer = gt_bboxes.new_zeros((8, feat_h, feat_w))

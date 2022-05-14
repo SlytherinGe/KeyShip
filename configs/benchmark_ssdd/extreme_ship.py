@@ -16,7 +16,7 @@ model = dict(
         num_stacks=2,
         stage_channels=[256, 256, 384, 384, 384, 512],
         stage_blocks=[2, 2, 2, 2, 2, 4],
-        norm_cfg=dict(type='BN', requires_grad=True)),
+        norm_cfg=dict(type='SyncBN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
         type='ExtremeHeadV4',
@@ -45,17 +45,10 @@ model = dict(
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        cache_cfg = dict(
-            root = '/home/gejunyao/ramdisk/TrainCache',
-            save_target=False,
-            save_output=False
-        ),
         gaussioan_sigma_ratio = (0.1, 0.1)
     ),
     test_cfg = dict(
-        cache_cfg = dict(
-            root = '/home/gejunyao/ramdisk/TestCache'
-        ),
+        cache_cfg = None,
         num_kpts_per_lvl = [0,60],
         num_dets_per_lvl = [0,60],
         ec_conf_thr = 0.01,
@@ -116,8 +109,8 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=16,
+    samples_per_gpu=3,
+    workers_per_gpu=6,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
     val=dict(version=angle_version,
@@ -140,7 +133,7 @@ load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SS
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '../exp_results/mmlab_results/hrsid/benchmark/extreme_ship'
+work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
