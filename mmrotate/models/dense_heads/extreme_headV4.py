@@ -322,16 +322,17 @@ class ExtremeHeadV4(BaseDenseHead):
                             center_pointer,
                             gt_bboxes,
                             gt_labels,
+                            img_meta,
                             reg_range,
-                            feat_shape,
-                            img_shape):
+                            feat_shape):
         """
         center_pointer: [8, feat_h, feat_w], first dim: (sc_x, sc_y, ..., lc_x, lc_y, ...)
         ec_offset: [4, feat_h, feat_w], first dim: (sc_off_x, sc_off_y, lc_off_x, lc_off_y)
         """
         _, _, feat_h, feat_w = feat_shape
-        img_h, img_w, _ = img_shape
-        stride_h, stride_w = img_h / feat_h, img_w / feat_w
+        img_h, img_w, _ = img_meta.get('pad_shape', None) if not None else img_meta['img_shape']
+        # TODO: support dynamic feature size
+        stride_h, stride_w = 4, 4#img_h / feat_h, img_w / feat_w
         # gt heatmaps: 0:target center 1: shortside center 2:longside center
         gt_heatmaps = [gt_bboxes.new_zeros((self.num_classes, feat_h, feat_w))  for _ in range(3)]
         gt_offsets = gt_bboxes.new_zeros((self.ec_offset_cfg[-1][1][1]*2, feat_h, feat_w),
@@ -406,8 +407,8 @@ class ExtremeHeadV4(BaseDenseHead):
                     gt_bboxes_list,
                     gt_labels_list,
                     gt_masks_list,
-                    feat_shapes,
-                    img_shape):
+                    img_metas,
+                    feat_shapes):
 
         multi_lvl_feat_targets = []
         if gt_masks_list == None:
@@ -418,9 +419,9 @@ class ExtremeHeadV4(BaseDenseHead):
                                 center_pointer[k],
                                 gt_bboxes_list,
                                 gt_labels_list,
+                                img_metas,
                                 reg_range=self.regress_ratios[k],
-                                feat_shape=feat_shape,
-                                img_shape=img_shape)
+                                feat_shape=feat_shape)
             for t in target:
                 batched_feat_target = torch.stack(t, dim=0)
                 batched_feat_targets.append(batched_feat_target)
@@ -500,9 +501,8 @@ class ExtremeHeadV4(BaseDenseHead):
              img_metas,
              gt_bboxes_ignore=None):
 
-        targets = self.get_targets( center_pointer, gt_bboxes, gt_labels, gt_masks,
-                                    [feat.shape for feat in target_center_heats],
-                                    img_metas[0]['pad_shape'])
+        targets = self.get_targets( center_pointer, gt_bboxes, gt_labels, gt_masks, img_metas,
+                                    [feat.shape for feat in target_center_heats])
 
         lc_det_loss, sc_det_loss, tc_det_loss = multi_apply(self.loss_heat_single,
                                 longside_center_heats,
