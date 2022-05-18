@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/hrsid.py', '../_base_/schedules/schedule_1x.py',
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_3x.py',
     '../_base_/default_runtime.py'
 ]
 
@@ -41,8 +41,8 @@ model = dict(
             type='DeltaXYWHAOBBoxCoder',
             angle_range=angle_version,
             norm_factor=None,
-            edge_swap=False,
-            proj_xy=False,
+            edge_swap=True,
+            proj_xy=True,
             target_means=(.0, .0, .0, .0, .0),
             target_stds=(1.0, 1.0, 1.0, 1.0, 1.0)),
         loss_cls=dict(
@@ -75,7 +75,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(800, 800)),
+    dict(type='RResize', img_scale=(640, 640)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -93,7 +93,8 @@ train_pipeline = [
     dict(type='ContrastTransform', level=3, prob=0.3),
     dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(800, 800)),
+    dict(type='Pad', pad_to_square=True),
+    # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
@@ -102,23 +103,28 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(800, 800),
+        img_scale=(640, 640),
         flip=False,
         transforms=[
             dict(type='RResize'),
             dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size=(800, 800)),
+            dict(type='Pad', pad_to_square=True),
             dict(type='DefaultFormatBundle'),
             dict(type='Collect', keys=['img'])
         ])
 ]
-data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=16,
-    train=dict(pipeline=train_pipeline),
-    val=dict(pipeline=test_pipeline),
-    test=dict(pipeline=test_pipeline))
 
+optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+
+data = dict(
+    samples_per_gpu=8,
+    workers_per_gpu=16,
+    train=dict(version=angle_version,
+               pipeline=train_pipeline),
+    val=dict(version=angle_version,
+            pipeline=test_pipeline),
+    test=dict(version=angle_version,
+            pipeline=test_pipeline))
 
 log_config = dict(
     interval=10,
@@ -127,17 +133,6 @@ log_config = dict(
         dict(type='TensorboardLoggerHook')
     ])
 
-evaluation = dict(interval=1, metric='mAP', save_best='auto')    
-optimizer = dict(lr=0.005)
-
-# learning policy
-lr_config = dict(
-    policy='step',
-    warmup='linear',
-    warmup_iters=50,
-    warmup_ratio=1.0 / 3,
-    step=[12, 20])
-runner = dict(type='EpochBasedRunner', max_epochs=24)
-checkpoint_config = dict(interval=1)
-
-work_dir = '../exp_results/mmlab_results/hrsid/benchmark/rotated_retinanet'
+work_dir = '../exp_results/mmlab_results/ssdd/benchmark/rotated_retinanet'
+# evaluation
+evaluation = dict(interval=1, metric='mAP', save_best='auto')
