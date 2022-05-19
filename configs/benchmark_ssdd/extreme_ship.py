@@ -16,7 +16,7 @@ model = dict(
         num_stacks=2,
         stage_channels=[256, 256, 384, 384, 384, 512],
         stage_blocks=[2, 2, 2, 2, 2, 4],
-        norm_cfg=dict(type='BN', requires_grad=True)),
+        norm_cfg=dict(type='SyncBN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
         type='ExtremeHeadV4',
@@ -45,17 +45,10 @@ model = dict(
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        cache_cfg = dict(
-            root = '/home/gejunyao/ramdisk/TrainCache',
-            save_target=False,
-            save_output=False
-        ),
         gaussioan_sigma_ratio = (0.1, 0.1)
     ),
     test_cfg = dict(
-        cache_cfg = dict(
-            root = '/home/gejunyao/ramdisk/TestCache'
-        ),
+        cache_cfg = None,
         num_kpts_per_lvl = [0,60],
         num_dets_per_lvl = [0,60],
         ec_conf_thr = 0.01,
@@ -75,7 +68,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=[(640, 640), (560, 560), (480, 480)],multiscale_mode='value'),
+    dict(type='RResize', img_scale=(640, 640)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -93,7 +86,7 @@ train_pipeline = [
     dict(type='ContrastTransform', level=3, prob=0.3),
     dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', pad_to_square=True),
+    dict(type='Pad', size_divisor=32),
     # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
@@ -103,12 +96,12 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=[(640, 640), (560, 560), (480, 480)],
+        img_scale=(640, 640),
         flip=False,
         transforms=[
             dict(type='RResize'),
             dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', pad_to_square=True),
+            dict(type='Pad', size_divisor=32),
             dict(type='DefaultFormatBundle'),
             dict(type='Collect', keys=['img'])
         ])
@@ -117,7 +110,7 @@ test_pipeline = [
 
 data = dict(
     samples_per_gpu=3,
-    workers_per_gpu=16,
+    workers_per_gpu=6,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
     val=dict(version=angle_version,
@@ -145,7 +138,7 @@ work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship'
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
-optimizer = dict(type='Adam', lr=0.003)
+optimizer = dict(type='Adam', lr=0.0006)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
 # lr_config = dict(policy='step', step=[100])

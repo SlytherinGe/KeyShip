@@ -612,8 +612,8 @@ class ExtremeHeadV4(BaseDenseHead):
 
         clses = gather_feat(clses, inds).float()
         # normalize bbox predictions to range (0, 1)
-        bboxes[:, 0::2] = bboxes[:, 0::2] / width
-        bboxes[:, 1::2] = bboxes[:, 1::2] / height
+        bboxes[..., 0::2] = bboxes[..., 0::2] / width
+        bboxes[..., 1::2] = bboxes[..., 1::2] / height
 
         return bboxes.clamp(0., 1.), scores, clses
 
