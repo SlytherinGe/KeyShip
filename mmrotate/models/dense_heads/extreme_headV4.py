@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init, build_norm_layer, build_activation_layer
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
+from mmdet.models.plugins import DropBlock
 import cv2
 
 from mmrotate.core import (multiclass_nms_rotated,
@@ -204,6 +205,9 @@ class ExtremeHeadV4(BaseDenseHead):
                     conv_cfg=conv_cfg,
                     act_cfg=act_cfg
                 )
+                if mode == 'drop':
+                    dropblock = DropBlock(0.25, 5, 5000)
+                    convs.append(dropblock)
                 in_ch = out_ch
                 convs.append(conv)
             elif layer_type == 'upsample':
@@ -241,29 +245,31 @@ class ExtremeHeadV4(BaseDenseHead):
 
         bias_init = bias_init_with_prob(0.1)
 
+        non_init_classes = (nn.Upsample, DropBlock)
+
         for m in self.longside_center:
-            if isinstance(m, nn.Upsample):
+            if isinstance(m, non_init_classes):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
         self.longside_center[-1].conv.bias.data.fill_(bias_init)
 
         for m in self.shortside_center:
-            if isinstance(m, nn.Upsample):
+            if isinstance(m, non_init_classes):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
         self.shortside_center[-1].conv.bias.data.fill_(bias_init)
 
         for m in self.target_center:
-            if isinstance(m, nn.Upsample):
+            if isinstance(m, non_init_classes):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
         self.target_center[-1].conv.bias.data.fill_(bias_init)       
 
         for m in self.center_pointer:
-            if isinstance(m, nn.Upsample):
+            if isinstance(m, non_init_classes):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
@@ -271,14 +277,14 @@ class ExtremeHeadV4(BaseDenseHead):
 
         # init ec offset
         for m in self.sc_offset:
-            if isinstance(m, nn.Upsample):
+            if isinstance(m, non_init_classes):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)
         self.sc_offset[-1].conv.bias.data.fill_(bias_init) 
 
         for m in self.lc_offset:
-            if isinstance(m, nn.Upsample):
+            if isinstance(m, non_init_classes):
                 continue
             elif isinstance(m.conv, nn.Conv2d):
                 normal_init(m.conv, std=0.01)

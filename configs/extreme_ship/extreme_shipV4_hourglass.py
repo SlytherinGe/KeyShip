@@ -2,8 +2,8 @@ _base_ = [
     '../_base_/datasets/ssdd_official.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('default', 256)),
-                    ('conv',     ('default', 256))]
+BASE_CONV_SETTING = [('conv',     ('drop', 256)),
+                    ('conv',     ('drop', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'
@@ -63,7 +63,7 @@ model = dict(
         sc_ptr_sigma = 0.01,
         lc_ptr_sigma = 0.01,
         valid_size_range = [(-1,0), (-1, 2),],
-        score_thr = 0.05,
+        score_thr = 0.2,
         nms = dict(type='rnms', iou_thr=0.20),
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
         max_per_img=100
