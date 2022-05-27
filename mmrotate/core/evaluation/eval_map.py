@@ -54,7 +54,9 @@ def tpfp_default(det_bboxes,
         if area_ranges == [(None, None)]:
             fp[...] = 1
         else:
-            raise NotImplementedError
+            det_areas =  det_bboxes[:, 2] *  det_bboxes[:, 3]
+            for i, (min_area, max_area) in enumerate(area_ranges):
+                fp[i, (det_areas >= min_area) & (det_areas < max_area)] = 1
         return tp, fp
 
     ious = box_iou_rotated(
@@ -72,7 +74,8 @@ def tpfp_default(det_bboxes,
         if min_area is None:
             gt_area_ignore = np.zeros_like(gt_ignore_inds, dtype=bool)
         else:
-            raise NotImplementedError
+            gt_areas = gt_bboxes[:, 2] * gt_bboxes[:, 3]
+            gt_area_ignore = (gt_areas < min_area) | (gt_areas >= max_area)
         for i in sort_inds:
             if ious_max[i] >= iou_thr:
                 matched_gt = ious_argmax[i]
