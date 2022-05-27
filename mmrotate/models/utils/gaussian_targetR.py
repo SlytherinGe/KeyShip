@@ -21,12 +21,11 @@ def gaussian2D_R(w, h, a, sigma_ratio, dtype=torch.float32, device='cpu'):
     Y = torch.arange(-cy, cy+1, dtype=dtype, device=device)
 
     y, x = torch.meshgrid(Y, X)
-    scale = torch.ones_like(y)
-    pos_matrix = torch.cat((x[None], y[None], scale[None])).permute(1,2,0)
-
-    rotate_matrix = torch.tensor([[cos_theta, -sin_theta, 0],
-                                  [sin_theta, cos_theta,0],
-                                  [0,0,1]],device=device)
+    pos_matrix = torch.cat((x[None], y[None])).permute(1,2,0)
+    rotate_matrix = torch.tensor([[cos_theta, -sin_theta],
+                                  [sin_theta, cos_theta]
+                                  ],device=device)
+                                  
     rotated_matrix = torch.matmul(pos_matrix, rotate_matrix)
 
     X, Y = rotated_matrix[...,0], rotated_matrix[...,1]
