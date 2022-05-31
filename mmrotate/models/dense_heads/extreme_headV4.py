@@ -634,20 +634,27 @@ class ExtremeHeadV4(BaseDenseHead):
 
         num_lvl = len(all_lvl_bbox_kpts)
         
-        all_lvl_rboxes = []
+        all_lvl_rboxes_sc = []
+        all_lvl_rboxes_lc = []
         for bbox_kpts in all_lvl_bbox_kpts:
             bbox_kpts = bbox_kpts.clamp(0, 1)
-            rboxes = keypoints2rbboxes(bbox_kpts, sc_first=True)
-            all_lvl_rboxes.append(rboxes)
+            rboxes_sc = keypoints2rbboxes(bbox_kpts, sc_first=True)
+            rboxes_lc = keypoints2rbboxes(bbox_kpts, sc_first=False)
+            all_lvl_rboxes_sc.append(rboxes_sc)
+            all_lvl_rboxes_lc.append(rboxes_lc)
 
         if valid_size_range is not None:
             for i in range(num_lvl):
-                valid_ind = (all_lvl_rboxes[i][...,2] > valid_size_range[i][0]) & \
-                            (all_lvl_rboxes[i][...,2] < valid_size_range[i][1])
-                all_lvl_rboxes[i] = all_lvl_rboxes[i][valid_ind][None]
+                valid_ind = (all_lvl_rboxes_sc[i][...,2] > valid_size_range[i][0]) & \
+                            (all_lvl_rboxes_sc[i][...,2] < valid_size_range[i][1])
+                all_lvl_rboxes_sc[i] = all_lvl_rboxes_sc[i][valid_ind][None]
+                all_lvl_rboxes_lc[i] = all_lvl_rboxes_lc[i][valid_ind][None]
                 all_lvl_bbox_scores[i] = all_lvl_bbox_scores[i][valid_ind][None]
                 all_lvl_bbox_clses[i] = all_lvl_bbox_clses[i][valid_ind][None]
 
+        all_lvl_rboxes = all_lvl_rboxes_sc + all_lvl_rboxes_lc
+        all_lvl_bbox_scores = all_lvl_bbox_scores + [score * 0.99 for score in all_lvl_bbox_scores]
+        all_lvl_bbox_clses = all_lvl_bbox_clses + all_lvl_bbox_clses
         det_rboxes = torch.cat(all_lvl_rboxes, dim=1)
         det_scores = torch.cat(all_lvl_bbox_scores, dim=1)
         det_clses = torch.cat(all_lvl_bbox_clses, dim=1)

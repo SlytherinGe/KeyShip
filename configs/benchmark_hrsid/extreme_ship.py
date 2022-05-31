@@ -2,8 +2,8 @@ _base_ = [
     '../_base_/datasets/hrsid.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('drop', 256)),
-                    ('conv',     ('drop', 256))]
+BASE_CONV_SETTING = [('conv',     ('default', 256)),
+                    ('conv',     ('default', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'
@@ -28,8 +28,8 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
-        center_pointer_cfg = BASE_CONV_SETTING + \
-                            [('conv',     ('out',     8))],
+        center_pointer_cfg = [('conv',     ('out',     8))],
+        ec_offset_cfg = [('conv',     ('out',     2))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
             type='GaussianFocalLoss',
@@ -38,15 +38,13 @@ model = dict(
             loss_weight=1.0               
         ),
         loss_pointer=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=0.1
+            type='SmoothL1Loss', beta=1/8, loss_weight=0.05
+        ),
+        loss_offsets=dict(
+            type='SmoothL1Loss', beta=1/8, loss_weight=0.1
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        cache_cfg = dict(
-            root = '/home/gejunyao/ramdisk/TrainCache',
-            save_target=False,
-            save_output=False
-        ),
         gaussioan_sigma_ratio = (0.1, 0.1)
     ),
     test_cfg = dict(
@@ -55,9 +53,11 @@ model = dict(
         num_dets_per_lvl = [0,60],
         ec_conf_thr = 0.01,
         tc_conf_thr = 0.1,
+        sc_ptr_sigma = 0.01,
+        lc_ptr_sigma = 0.01,
         valid_size_range = [(-1,0), (-1, 2),],
         score_thr = 0.05,
-        nms_cfg = dict(type='rnms', iou_thr=0.20),
+        nms = dict(type='rnms', iou_thr=0.20),
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
         max_per_img=100
     ))
@@ -107,7 +107,7 @@ test_pipeline = [
 ]
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=4,
+    workers_per_gpu=2,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
@@ -123,8 +123,8 @@ log_config = dict(
 
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_300.pth'
-resume_from = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/HRSID/ExtremeShipV4/exp1/epoch_207.pth'
+load_from = None
+resume_from = None
 workflow = [('train', 1)]
 
 work_dir = '../exp_results/mmlab_results/hrsid/benchmark/extreme_ship'
@@ -133,7 +133,7 @@ work_dir = '../exp_results/mmlab_results/hrsid/benchmark/extreme_ship'
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
 # optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
-optimizer = dict(type='Adam', lr=0.0004)
+optimizer = dict(type='Adam', lr=0.0012)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 lr_config = dict(policy='step',
                 warmup='linear',

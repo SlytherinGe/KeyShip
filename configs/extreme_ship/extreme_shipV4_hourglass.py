@@ -2,8 +2,8 @@ _base_ = [
     '../_base_/datasets/ssdd_official.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('drop', 256)),
-                    ('conv',     ('drop', 256))]
+BASE_CONV_SETTING = [('conv',     ('default', 256)),
+                    ('conv',     ('default', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'

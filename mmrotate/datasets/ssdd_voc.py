@@ -148,7 +148,7 @@ class SSDDDataset(DOTADataset):
                  logger=None,
                  proposal_nums=(100, 300, 1000),
                  iou_thr=[0.5, 0.75],
-                 scale_ranges=[(0, 1e6), (0, 32), (32, 96), (85, 1e6)],
+                 scale_ranges=None,#[(0, 1e6), (0, 32), (32, 96), (85, 1e6)],
                  nproc=16):
         """Evaluate the dataset.
 
