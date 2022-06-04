@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
-from mmdet.datasets.pipelines.transforms import RandomFlip, Resize
+from numpy import random
+from mmdet.datasets.pipelines.transforms import RandomFlip, Resize, RandomCenterCropPad
 from mmdet.datasets.pipelines.auto_augment import Translate, Rotate
 
 from mmrotate.core import norm_angle, obb2poly_np, poly2obb_np
@@ -36,12 +37,14 @@ class RResize(Resize):
     def __init__(self,
                  img_scale=None,
                  multiscale_mode='range',
-                 ratio_range=None):
+                 ratio_range=None,
+                 override=False):
         super(RResize, self).__init__(
             img_scale=img_scale,
             multiscale_mode=multiscale_mode,
             ratio_range=ratio_range,
-            keep_ratio=True)
+            keep_ratio=True,
+            override=override)
 
     def _resize_bboxes(self, results):
         """Resize bounding boxes with ``results['scale_factor']``."""
@@ -380,3 +383,99 @@ class RRotate(Rotate):
             if mask_key in results:
                 results[mask_key] = results[mask_key][valid_inds]
         return results
+
+@ROTATED_PIPELINES.register_module()
+class RRandomCenterCropPad(RandomCenterCropPad):
+
+    def __init__(self, 
+                crop_size=None, 
+                ratios=..., 
+                border=128, 
+                mean=None, 
+                std=None, 
+                to_rgb=None, 
+                test_mode=False, 
+                test_pad_mode=..., 
+                test_pad_add_pix=0, 
+                bbox_clip_border=True):
+        super().__init__(crop_size, 
+                         ratios, 
+                         border, 
+                         mean, 
+                         std, 
+                         to_rgb, 
+                         test_mode, 
+                         test_pad_mode, 
+                         test_pad_add_pix, 
+                         bbox_clip_border)
+
+    def _filter_boxes(self, patch, boxes):
+        center = boxes[:, :2]
+        mask = (center[:, 0] > patch[0]) * (center[:, 1] > patch[1]) * (
+            center[:, 0] < patch[2]) * (
+                center[:, 1] < patch[3])
+        return mask
+        
+    def _train_aug(self, results):
+        """Random crop and around padding the original image.
+
+        Args:
+            results (dict): Image infomations in the augment pipeline.
+
+        Returns:
+            results (dict): The updated dict.
+        """
+        img = results['img']
+        h, w, c = img.shape
+        boxes = results['gt_bboxes']
+        while True:
+            scale = random.choice(self.ratios)
+            new_h = int(self.crop_size[0] * scale)
+            new_w = int(self.crop_size[1] * scale)
+            h_border = self._get_border(self.border, h)
+            w_border = self._get_border(self.border, w)
+
+            for i in range(50):
+                center_x = random.randint(low=w_border, high=w - w_border)
+                center_y = random.randint(low=h_border, high=h - h_border)
+
+                cropped_img, border, patch = self._crop_image_and_paste(
+                    img, [center_y, center_x], [new_h, new_w])
+
+                mask = self._filter_boxes(patch, boxes)
+                # if image do not have valid bbox, any crop patch is valid.
+                if not mask.any() and len(boxes) > 0:
+                    continue
+
+                results['img'] = cropped_img
+                results['img_shape'] = cropped_img.shape
+                results['pad_shape'] = cropped_img.shape
+
+                x0, y0, x1, y1 = patch
+
+                left_w, top_h = center_x - x0, center_y - y0
+                cropped_center_x, cropped_center_y = new_w // 2, new_h // 2
+
+                # crop bboxes accordingly and clip to the image boundary
+                for key in results.get('bbox_fields', []):
+                    mask = self._filter_boxes(patch, results[key])
+                    bboxes = results[key][mask]
+                    bboxes[:, 0] += cropped_center_x - left_w - x0
+                    bboxes[:, 1] += cropped_center_y - top_h - y0
+                    if self.bbox_clip_border:
+                        bboxes[:, 0] = np.clip(bboxes[:, 0], 0, new_w)
+                        bboxes[:, 1] = np.clip(bboxes[:, 1], 0, new_h)
+                    results[key] = bboxes
+                    if key in ['gt_bboxes']:
+                        if 'gt_labels' in results:
+                            labels = results['gt_labels'][mask]
+                            results['gt_labels'] = labels
+                        if 'gt_masks' in results:
+                            raise NotImplementedError(
+                                'RandomCenterCropPad only supports bbox.')
+
+                # crop semantic seg
+                for key in results.get('seg_fields', []):
+                    raise NotImplementedError(
+                        'RandomCenterCropPad only supports bbox.')
+                return results

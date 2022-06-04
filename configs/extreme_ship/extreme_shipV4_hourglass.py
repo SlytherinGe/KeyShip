@@ -73,9 +73,8 @@ angle_version = 'oc'
 img_norm_cfg = dict(
     mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(type='LoadImageFromFile', to_float32=True),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=[(640, 640), (560, 560), (480, 480)],multiscale_mode='value'),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -88,17 +87,22 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=None,
         version=angle_version),
-    dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
+    dict(
+        type='RRandomCenterCropPad',
+        crop_size=(511, 511),
+        ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
+        test_mode=False,
+        test_pad_mode=None,
+        **img_norm_cfg),
+    dict(type='RResize', img_scale=(511, 511)),
     dict(type='BrightnessTransform', level=3, prob=0.3),
     dict(type='ContrastTransform', level=3, prob=0.3),
-    dict(type='EqualizeTransform', prob=0.3),
+    # dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', pad_to_square=True),
-    # dict(type='InstanceMaskGenerator'),
+    dict(type='Pad', size=(511, 511)),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-
 test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
@@ -115,7 +119,7 @@ test_pipeline = [
 ]
 
 data = dict(
-    samples_per_gpu=8,
+    samples_per_gpu=12,
     workers_per_gpu=16,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
@@ -139,12 +143,12 @@ load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SS
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp8/'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp13/'
 
 # evaluation
 evaluation = dict(interval=1, metric='mAP', save_best='auto')
 # optimizer
-optimizer = dict(type='Adam', lr=0.0012)
+optimizer = dict(type='Adam', lr=0.0018)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
 # lr_config = dict(policy='step', step=[100])
