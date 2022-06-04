@@ -66,9 +66,8 @@ angle_version = 'oc'
 img_norm_cfg = dict(
     mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(type='LoadImageFromFile', to_float32=True),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='RResize', img_scale=(800, 800)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -81,12 +80,19 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=None,
         version=angle_version),
-    dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
+    dict(
+        type='RRandomCenterCropPad',
+        crop_size=(511, 511),
+        ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
+        test_mode=False,
+        test_pad_mode=None,
+        **img_norm_cfg),
+    dict(type='RResize', img_scale=(511, 511)),
     dict(type='BrightnessTransform', level=3, prob=0.3),
     dict(type='ContrastTransform', level=3, prob=0.3),
-    dict(type='EqualizeTransform', prob=0.3),
+    # dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(800, 800)),
+    dict(type='Pad', size=(511, 511)),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
