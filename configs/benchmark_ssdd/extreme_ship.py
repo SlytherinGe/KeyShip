@@ -2,8 +2,8 @@ _base_ = [
     '../_base_/datasets/ssdd_official.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('drop', 256)),
-                    ('conv',     ('drop', 256))]
+BASE_CONV_SETTING = [('conv',     ('default', 256)),
+                    ('conv',     ('default', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'
@@ -81,10 +81,6 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=None,
         version=angle_version),
-    dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
-    dict(type='BrightnessTransform', level=3, prob=0.3),
-    dict(type='ContrastTransform', level=3, prob=0.3),
-    dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', pad_to_square=True),
     # dict(type='InstanceMaskGenerator'),
@@ -136,7 +132,7 @@ workflow = [('train', 1)]
 work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship'
 
 # evaluation
-evaluation = dict(interval=1, metric='mAP', save_best='auto')
+evaluation = dict(interval=1, metric='details', save_best='auto')
 # optimizer
 optimizer = dict(type='Adam', lr=0.0006)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
