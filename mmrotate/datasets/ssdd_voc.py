@@ -3,6 +3,7 @@ from .builder import ROTATED_DATASETS
 from .dota import DOTADataset
 import numpy as np
 import mmcv
+from mmcv import print_log
 from PIL import Image
 import os
 from mmrotate.core.evaluation import eval_rbbox_map
@@ -10,7 +11,7 @@ from mmrotate.core.evaluation import eval_rbbox_map
 import os.path as osp
 import xml.etree.ElementTree as ET
 from mmrotate.core import poly2obb_np
-
+from collections import OrderedDict
 @ROTATED_DATASETS.register_module()
 class SSDDDataset(DOTADataset):
     CLASSES = ('ship', )
@@ -149,6 +150,7 @@ class SSDDDataset(DOTADataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thr=[0.5, 0.75],
                  scale_ranges=[(0, 1e6), (0, 32), (32, 96), (85, 1e6)],
+                 use_07_metric=True,
                  nproc=16):
         """Evaluate the dataset.
 
@@ -176,7 +178,7 @@ class SSDDDataset(DOTADataset):
         if metric not in allowed_metrics:
             raise KeyError(f'metric {metric} is not supported')
         annotations = [self.get_ann_info(i) for i in range(len(self))]
-        eval_results = {}
+        eval_results = OrderedDict()
         if metric == 'mAP':
             if isinstance(iou_thr, list):
                 for iou in iou_thr:
@@ -186,6 +188,7 @@ class SSDDDataset(DOTADataset):
                         scale_ranges=None,
                         iou_thr=iou,
                         dataset=self.CLASSES,
+                        use_07_metric=False,
                         logger=logger,
                         nproc=nproc)
                     eval_results['mAP_{:.2}'.format(iou)] = mean_ap                    
@@ -197,24 +200,26 @@ class SSDDDataset(DOTADataset):
                     scale_ranges=None,
                     iou_thr=iou_thr,
                     dataset=self.CLASSES,
+                    use_07_metric=False,
                     logger=logger,
                     nproc=nproc)
                 eval_results['mAP'] = mean_ap
         elif metric == 'details':
             iou_thrs = [0.5+0.05*i for i in range(10)]
-            ap = []
-            for iou in iou_thrs:
+            mean_aps = []
+            for iou_thr in iou_thrs:
+                print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
                 mean_ap, _ = eval_rbbox_map(
                     results,
                     annotations,
                     scale_ranges=None,
-                    iou_thr=iou,
+                    iou_thr=iou_thr,
+                    use_07_metric=use_07_metric,
                     dataset=self.CLASSES,
-                    logger='silent',
-                    nproc=nproc)    
-                ap.append(mean_ap)
-            mAP = sum(ap) / 10.
-            eval_results['mAP'] = mAP       
+                    logger=logger,
+                    nproc=nproc)
+                mean_aps.append(mean_ap)
+                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
             # calculate aps, apm, apl at 0.5  
             mean_ap, _ = eval_rbbox_map(
                 results,
@@ -222,9 +227,9 @@ class SSDDDataset(DOTADataset):
                 scale_ranges=scale_ranges,
                 iou_thr=0.5,
                 dataset=self.CLASSES,
+                use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            ap.append(mean_ap)
             eval_results['mAP@.50'] = mean_ap[0]  
             eval_results['mAP_s@.50'] = mean_ap[1]
             eval_results['mAP_m@.50'] = mean_ap[2] 
@@ -235,13 +240,15 @@ class SSDDDataset(DOTADataset):
                 scale_ranges=scale_ranges,
                 iou_thr=0.75,
                 dataset=self.CLASSES,
+                use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            ap.append(mean_ap)
             eval_results['mAP@.75'] = mean_ap[0]  
             eval_results['mAP_s@.75'] = mean_ap[1]
             eval_results['mAP_m@.75'] = mean_ap[2] 
-            eval_results['mAP_l@.75'] = mean_ap[3]          
+            eval_results['mAP_l@.75'] = mean_ap[3]    
+            eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
+            eval_results.move_to_end('mAP', last=False)        
         else:
             raise NotImplementedError
 
