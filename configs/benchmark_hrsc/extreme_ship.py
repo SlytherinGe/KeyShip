@@ -1,5 +1,6 @@
 _base_ = [
-    '../_base_/datasets/hrsid.py'
+    '../_base_/datasets/hrsc.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/default_runtime.py'
 ]
 
 BASE_CONV_SETTING = [('conv',     ('default', 256)),
@@ -16,7 +17,7 @@ model = dict(
         num_stacks=2,
         stage_channels=[256, 256, 384, 384, 384, 512],
         stage_blocks=[2, 2, 2, 2, 2, 4],
-        norm_cfg=dict(type='SyncBN', requires_grad=True)),
+        norm_cfg=dict(type='BN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
         type='ExtremeHeadV4',
@@ -61,10 +62,8 @@ model = dict(
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
         max_per_img=100
     ))
-
-angle_version = 'oc'
 img_norm_cfg = dict(
-    mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -105,13 +104,11 @@ test_pipeline = [
             dict(type='Collect', keys=['img'])
         ])
 ]
-data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
-    train=dict(pipeline=train_pipeline),
-    val=dict(pipeline=test_pipeline),
-    test=dict(pipeline=test_pipeline))
 
+data = dict(
+    train=dict(pipeline=train_pipeline, version=angle_version),
+    val=dict(pipeline=test_pipeline, version=angle_version),
+    test=dict(pipeline=test_pipeline, version=angle_version))
 
 log_config = dict(
     interval=10,
@@ -127,7 +124,7 @@ load_from = None
 resume_from = None
 workflow = [('train', 1)]
 
-work_dir = '../exp_results/mmlab_results/hrsid/benchmark/extreme_ship'
+work_dir = '../exp_results/mmlab_results/hrsc/benchmark/extreme_ship'
 
 # evaluation
 evaluation = dict(interval=1, metric='details', save_best='auto')
