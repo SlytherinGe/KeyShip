@@ -3,7 +3,7 @@ _base_ = [
     '../_base_/default_runtime.py'
 ]
 
-angle_version = 'le90'
+angle_version = 'le135'
 model = dict(
     type='RotatedRetinaNet',
     backbone=dict(
@@ -88,12 +88,12 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=None,
         version=angle_version),
-    dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
-    dict(type='BrightnessTransform', level=3, prob=0.3),
-    dict(type='ContrastTransform', level=3, prob=0.3),
-    dict(type='EqualizeTransform', prob=0.3),
+    # dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
+    # dict(type='BrightnessTransform', level=3, prob=0.3),
+    # dict(type='ContrastTransform', level=3, prob=0.3),
+    # dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', pad_to_square=True),
+    dict(type='Pad', size_divisor=32),
     # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
@@ -114,11 +114,11 @@ test_pipeline = [
         ])
 ]
 
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
 
 data = dict(
-    samples_per_gpu=8,
-    workers_per_gpu=16,
+    samples_per_gpu=2,
+    workers_per_gpu=2,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
     val=dict(version=angle_version,
@@ -132,7 +132,14 @@ log_config = dict(
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook')
     ])
-
+lr_config = dict(
+    policy='step',
+    warmup='linear',
+    warmup_iters=500,
+    warmup_ratio=1.0 / 3,
+    step=[65, 71])
+runner = dict(type='EpochBasedRunner', max_epochs=72)
+checkpoint_config = dict(interval=12)
 work_dir = '../exp_results/mmlab_results/ssdd/benchmark/rotated_retinanet'
 # evaluation
-evaluation = dict(interval=1, metric='mAP', save_best='auto')
+evaluation = dict(interval=1, metric='details', save_best='auto')
