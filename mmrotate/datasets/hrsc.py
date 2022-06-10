@@ -259,6 +259,51 @@ class HRSCDataset(CustomDataset):
                 eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
             eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
             eval_results.move_to_end('mAP', last=False)
+        elif metric == 'details':
+            iou_thrs = [0.5+0.05*i for i in range(10)]
+            mean_aps = []
+            for iou_thr in iou_thrs:
+                print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
+                mean_ap, _ = eval_rbbox_map(
+                    results,
+                    annotations,
+                    scale_ranges=None,
+                    iou_thr=iou_thr,
+                    use_07_metric=use_07_metric,
+                    dataset=self.CLASSES,
+                    logger=logger,
+                    nproc=nproc)
+                mean_aps.append(mean_ap)
+                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
+            # calculate aps, apm, apl at 0.5  
+            mean_ap, _ = eval_rbbox_map(
+                results,
+                annotations,
+                scale_ranges=scale_ranges,
+                iou_thr=0.5,
+                dataset=self.CLASSES,
+                use_07_metric=False,
+                logger=logger,
+                nproc=nproc)    
+            eval_results['mAP@.50'] = mean_ap[0]  
+            eval_results['mAP_s@.50'] = mean_ap[1]
+            eval_results['mAP_m@.50'] = mean_ap[2] 
+            eval_results['mAP_l@.50'] = mean_ap[3]      
+            mean_ap, _ = eval_rbbox_map(
+                results,
+                annotations,
+                scale_ranges=scale_ranges,
+                iou_thr=0.75,
+                dataset=self.CLASSES,
+                use_07_metric=False,
+                logger=logger,
+                nproc=nproc)    
+            eval_results['mAP@.75'] = mean_ap[0]  
+            eval_results['mAP_s@.75'] = mean_ap[1]
+            eval_results['mAP_m@.75'] = mean_ap[2] 
+            eval_results['mAP_l@.75'] = mean_ap[3]    
+            eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
+            eval_results.move_to_end('mAP', last=False)   
         elif metric == 'recall':
             raise NotImplementedError
 

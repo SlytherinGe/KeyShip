@@ -188,10 +188,10 @@ class SSDDDataset(DOTADataset):
                         scale_ranges=None,
                         iou_thr=iou,
                         dataset=self.CLASSES,
-                        use_07_metric=False,
+                        use_07_metric=use_07_metric,
                         logger=logger,
                         nproc=nproc)
-                    eval_results['mAP_{:.2}'.format(iou)] = mean_ap                    
+                    eval_results['mAP_{:.2}'.format(iou)] = round(mean_ap, 3)                  
             else:
                 assert isinstance(iou_thr, float)
                 mean_ap, _ = eval_rbbox_map(
@@ -200,7 +200,7 @@ class SSDDDataset(DOTADataset):
                     scale_ranges=None,
                     iou_thr=iou_thr,
                     dataset=self.CLASSES,
-                    use_07_metric=False,
+                    use_07_metric=use_07_metric,
                     logger=logger,
                     nproc=nproc)
                 eval_results['mAP'] = mean_ap
@@ -230,10 +230,10 @@ class SSDDDataset(DOTADataset):
                 use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            eval_results['mAP@.50'] = mean_ap[0]  
-            eval_results['mAP_s@.50'] = mean_ap[1]
-            eval_results['mAP_m@.50'] = mean_ap[2] 
-            eval_results['mAP_l@.50'] = mean_ap[3]      
+            eval_results['mAP@.50'] = round(mean_ap[0], 3)  
+            eval_results['mAP_s@.50'] = round(mean_ap[1], 3)
+            eval_results['mAP_m@.50'] = round(mean_ap[2], 3)
+            eval_results['mAP_l@.50'] = round(mean_ap[3], 3)      
             mean_ap, _ = eval_rbbox_map(
                 results,
                 annotations,
@@ -243,10 +243,10 @@ class SSDDDataset(DOTADataset):
                 use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            eval_results['mAP@.75'] = mean_ap[0]  
-            eval_results['mAP_s@.75'] = mean_ap[1]
-            eval_results['mAP_m@.75'] = mean_ap[2] 
-            eval_results['mAP_l@.75'] = mean_ap[3]    
+            eval_results['mAP@.75'] = round(mean_ap[0], 3)  
+            eval_results['mAP_s@.75'] = round(mean_ap[1], 3)
+            eval_results['mAP_m@.75'] = round(mean_ap[2], 3) 
+            eval_results['mAP_l@.75'] = round(mean_ap[3], 3)    
             eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
             eval_results.move_to_end('mAP', last=False)        
         else:

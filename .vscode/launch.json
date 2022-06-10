@@ -11,13 +11,13 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
+            // "args": ["configs/extreme_ship/extreme_shipV4_hourglass.py",
+            //         "--work-dir", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test",
+            //         // "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth",
+            //         "--seed", "42"]
             "args": ["configs/extreme_ship/extreme_shipV4_hourglass.py",
-                    "--work-dir", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test",
-                    // "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth",
-                    "--seed", "42"]
-            // "args": ["/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp10/extreme_ship.py",
-                // "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp10/epoch_21.pth",
-                // "--eval", "mAP"]
+                "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp13/best_mAP_0.5_epoch_195.pth",
+                "--show"]
         }
     ]
 }
