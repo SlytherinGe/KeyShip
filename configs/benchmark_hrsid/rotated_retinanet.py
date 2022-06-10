@@ -113,7 +113,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=4,
+    samples_per_gpu=6,
     workers_per_gpu=16,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
@@ -140,4 +140,4 @@ lr_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 checkpoint_config = dict(interval=1)
 
-work_dir = '../exp_results/mmlab_results/hrsid/benchmark/rotated_retinanet'
+work_dir = '../exp_results/mmlab_results/ssdd/benchmark/rotated_retinanet_multi_gpu'
