@@ -34,7 +34,7 @@ model = dict(
         loss_heatmap=dict(
             type='GaussianFocalLoss',
             alpha=2.0,
-            gamma=4.0,
+            gamma=8.0,
             loss_weight=1.0               
         ),
         loss_pointer=dict(
@@ -81,12 +81,19 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=[9, 11],
         version='oc'),
+    dict(
+        type='RRandomCenterCropPad',
+        crop_size=(511, 511),
+        ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
+        test_mode=False,
+        test_pad_mode=None,
+        **img_norm_cfg),
     # dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
     # dict(type='BrightnessTransform', level=3, prob=0.3),
     # dict(type='ContrastTransform', level=3, prob=0.3),
     # dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(800, 800)),
+    dict(type='Pad', size=(511, 511)),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
@@ -106,8 +113,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
+    samples_per_gpu=4,
+    workers_per_gpu=4,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
@@ -135,6 +142,10 @@ evaluation = dict(interval=1, metric='details', save_best='auto')
 # optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
 optimizer = dict(type='Adam', lr=0.0008)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
-lr_config = dict(policy='step', step=[190])
+lr_config = dict(policy='step',
+                warmup='linear',
+                warmup_iters=50,
+                warmup_ratio=1.0 / 3, 
+                step=[150, 190])
 runner = dict(type='EpochBasedRunner', max_epochs=210)
 checkpoint_config = dict(interval=1)

@@ -53,9 +53,10 @@ model = dict(
         gaussioan_sigma_ratio = (0.1, 0.1)
     ),
     test_cfg = dict(
-        cache_cfg = dict(
-            root = '/home/gejunyao/ramdisk/TestCache'
-        ),
+        # cache_cfg = dict(
+        #     root = '/home/gejunyao/ramdisk/TestCache'
+        # ),
+        cache_cfg = None,
         num_kpts_per_lvl = [0,60],
         num_dets_per_lvl = [0,60],
         ec_conf_thr = 0.01,
@@ -103,6 +104,32 @@ train_pipeline = [
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
+# test_pipeline = [
+#     dict(type='LoadImageFromFile', to_float32=True),
+#     dict(
+#         type='MultiScaleFlipAug',
+#         img_scale=(640, 640),
+#         flip=False,
+#         transforms=[
+#             dict(type='RResize'),
+#             dict(
+#                 type='RRandomCenterCropPad',
+#                 crop_size=None,
+#                 ratios=None,
+#                 border=None,
+#                 test_mode=True,
+#                 test_pad_mode=['logical_or', 127],
+#                 **img_norm_cfg),
+#             dict(type='RandomFlip'),
+#             dict(type='Normalize', **img_norm_cfg),
+#             dict(type='ImageToTensor', keys=['img']),
+#             dict(
+#                 type='Collect',
+#                 keys=['img'],
+#                 meta_keys=('filename', 'ori_shape', 'img_shape', 'pad_shape',
+#                            'scale_factor', 'flip', 'flip_direction', 'img_norm_cfg', 'border')),
+#         ])
+# ]
 test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
@@ -112,7 +139,8 @@ test_pipeline = [
         transforms=[
             dict(type='RResize'),
             dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', pad_to_square=True),
+            dict(type='Pad', size_divisor=640),
+            # dict(type='Pad', pad_to_square=True),
             dict(type='DefaultFormatBundle'),
             dict(type='Collect', keys=['img'])
         ])
