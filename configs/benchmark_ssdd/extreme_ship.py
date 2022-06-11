@@ -1,5 +1,6 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py'
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_benchmark_6x.py',
+    '../_base_/benchmark_runtime.py'
 ]
 
 BASE_CONV_SETTING = [('conv',     ('default', 256)),
@@ -16,7 +17,7 @@ model = dict(
         num_stacks=2,
         stage_channels=[256, 256, 384, 384, 384, 512],
         stage_blocks=[2, 2, 2, 2, 2, 4],
-        norm_cfg=dict(type='SyncBN', requires_grad=True)),
+        norm_cfg=dict(type='BN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
         type='ExtremeHeadV4',
@@ -34,7 +35,7 @@ model = dict(
         loss_heatmap=dict(
             type='GaussianFocalLoss',
             alpha=2.0,
-            gamma=4.0,
+            gamma=8.0,
             loss_weight=1.0               
         ),
         loss_pointer=dict(
@@ -106,7 +107,7 @@ test_pipeline = [
 
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=6,
+    workers_per_gpu=2,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
     val=dict(version=angle_version,
@@ -114,34 +115,19 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-
-log_config = dict(
-    interval=10,
-    hooks=[
-        dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
-    ])
-# yapf:enable
-
-dist_params = dict(backend='nccl')
-log_level = 'INFO'
-load_from = None#'/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp14/epoch_300.pth'
-resume_from = None
-workflow = [('train', 1)]
-
 work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship'
 
-# evaluation
-evaluation = dict(interval=1, metric='details', save_best='auto')
-# optimizer
-optimizer = dict(type='Adam', lr=0.0006)
-optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
-# learning policy
-# lr_config = dict(policy='step', step=[100])
-runner = dict(type='EpochBasedRunner', max_epochs=210)
-lr_config = dict(policy='step',
-                warmup='linear',
-                warmup_iters=50,
-                warmup_ratio=1.0 / 3,
-                 step=[150, 200])
-checkpoint_config = dict(interval=21)
+# # evaluation
+# evaluation = dict(interval=1, metric='details', save_best='auto')
+# # optimizer
+# optimizer = dict(type='Adam', lr=0.0006)
+# optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
+# # learning policy
+# # lr_config = dict(policy='step', step=[100])
+# runner = dict(type='EpochBasedRunner', max_epochs=210)
+# lr_config = dict(policy='step',
+#                 warmup='linear',
+#                 warmup_iters=50,
+#                 warmup_ratio=1.0 / 3,
+#                  step=[150, 200])
+# checkpoint_config = dict(interval=21)

@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py',
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_6x.py',
     '../_base_/default_runtime.py'
 ]
 
@@ -219,6 +219,6 @@ lr_config = dict(
     step=[65, 71])
 runner = dict(type='EpochBasedRunner', max_epochs=72)
 checkpoint_config = dict(interval=12)
-work_dir = '../exp_results/mmlab_results/ssdd/benchmark/S2ANet'
+work_dir = '../exp_results/mmlab_results/ssdd/benchmark/R3Det'
 # evaluation
 evaluation = dict(interval=1, metric='details', save_best='auto')
