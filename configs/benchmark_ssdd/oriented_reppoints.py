@@ -1,8 +1,7 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_3x.py',
-    '../_base_/default_runtime.py'
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/benchmark_runtime.py'
 ]
-
 angle_version = 'le135'
 norm_cfg = dict(type='GN', num_groups=32, requires_grad=True)
 model = dict(
