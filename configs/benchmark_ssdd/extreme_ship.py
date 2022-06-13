@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_6x.py',
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_benchmark_6x.py',
     '../_base_/benchmark_runtime.py'
 ]
 
@@ -116,14 +116,12 @@ data = dict(
             pipeline=test_pipeline))
 
 work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship'
-
+load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
 # # evaluation
 # evaluation = dict(interval=1, metric='details', save_best='auto')
 # # optimizer
 # optimizer = dict(type='Adam', lr=0.0006)
 # optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
-# # learning policy
-# # lr_config = dict(policy='step', step=[100])
 # runner = dict(type='EpochBasedRunner', max_epochs=210)
 # lr_config = dict(policy='step',
 #                 warmup='linear',
