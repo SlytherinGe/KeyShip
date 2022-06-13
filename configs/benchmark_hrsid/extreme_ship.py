@@ -28,13 +28,13 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
-        center_pointer_cfg = [('conv',     ('out',     8))],
+        center_pointer_cfg = BASE_CONV_SETTING + [('conv',     ('out',     8))],
         ec_offset_cfg = [('conv',     ('out',     2))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
             type='GaussianFocalLoss',
             alpha=2.0,
-            gamma=8.0,
+            gamma=4.0,
             loss_weight=1.0               
         ),
         loss_pointer=dict(
@@ -49,8 +49,8 @@ model = dict(
     ),
     test_cfg = dict(
         cache_cfg = None,
-        num_kpts_per_lvl = [0,60],
-        num_dets_per_lvl = [0,60],
+        num_kpts_per_lvl = [0,100],
+        num_dets_per_lvl = [0,100],
         ec_conf_thr = 0.01,
         tc_conf_thr = 0.1,
         sc_ptr_sigma = 0.01,
@@ -79,21 +79,20 @@ train_pipeline = [
         rotate_ratio=0.5,
         angles_range=180,
         auto_bound=False,
-        rect_classes=[9, 11],
         version='oc'),
-    dict(
-        type='RRandomCenterCropPad',
-        crop_size=(511, 511),
-        ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
-        test_mode=False,
-        test_pad_mode=None,
-        **img_norm_cfg),
+    # dict(
+    #     type='RRandomCenterCropPad',
+    #     crop_size=(511, 511),
+    #     ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
+    #     test_mode=False,
+    #     test_pad_mode=None,
+    #     **img_norm_cfg),
     # dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
     # dict(type='BrightnessTransform', level=3, prob=0.3),
     # dict(type='ContrastTransform', level=3, prob=0.3),
     # dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(511, 511)),
+    dict(type='Pad', size=(800, 800)),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
@@ -141,7 +140,7 @@ evaluation = dict(interval=1, metric='details', save_best='auto')
 # optimizer
 # optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
 optimizer = dict(type='Adam', lr=0.0008)
-optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
+optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
 lr_config = dict(policy='step',
                 warmup='linear',
                 warmup_iters=50,
