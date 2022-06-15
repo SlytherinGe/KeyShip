@@ -1,7 +1,7 @@
 _base_ = [
-    '../_base_/datasets/hrsid.py'
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_benchmark_6x.py',
+    '../_base_/benchmark_runtime.py'
 ]
-
 BASE_CONV_SETTING = [('conv',     ('default', 256)),
                     ('conv',     ('default', 256))]
 NUM_CLASS=1
@@ -87,10 +87,6 @@ train_pipeline = [
         test_mode=False,
         test_pad_mode=None,
         **img_norm_cfg),
-    # dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
-    # dict(type='BrightnessTransform', level=3, prob=0.3),
-    # dict(type='ContrastTransform', level=3, prob=0.3),
-    # dict(type='EqualizeTransform', prob=0.3),
     dict(type='RResize', img_scale=(511, 511)),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size=(511, 511)),
@@ -135,17 +131,4 @@ resume_from = None
 workflow = [('train', 1)]
 
 work_dir = '../exp_results/mmlab_results/hrsid/benchmark/extreme_ship'
-
-# evaluation
-evaluation = dict(interval=1, metric='details', save_best='auto')
-# optimizer
-# optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
-optimizer = dict(type='Adam', lr=0.0008)
-optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
-lr_config = dict(policy='step',
-                warmup='linear',
-                warmup_iters=50,
-                warmup_ratio=1.0 / 3, 
-                step=[150, 190])
-runner = dict(type='EpochBasedRunner', max_epochs=210)
-checkpoint_config = dict(interval=1)
+load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'

@@ -35,7 +35,7 @@ model = dict(
         loss_heatmap=dict(
             type='GaussianFocalLoss',
             alpha=2.0,
-            gamma=8.0,
+            gamma=4.0,
             loss_weight=1.0               
         ),
         loss_pointer=dict(
