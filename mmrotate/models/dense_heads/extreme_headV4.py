@@ -324,6 +324,31 @@ class ExtremeHeadV4(BaseDenseHead):
         result_list = [lc, sc, tc, ctx_ptr, offset]
 
         return result_list
+        # lc, sc, tc = x, x, x
+
+        # for layer in self.longside_center[:-1]:
+        #     lc = layer(lc)
+        # for layer in self.shortside_center[:-1]:
+        #     sc = layer(sc)
+        
+        # off_lc = self.lc_offset[-1](lc)
+        # off_sc = self.sc_offset[-1](sc)
+
+        # lc = self.longside_center[-1](lc)
+        # sc = self.shortside_center[-1](sc)
+
+        # for layer in self.target_center[:-1]:
+        #     tc = layer(tc)
+
+        # for layer in self.center_pointer:
+        #     ctx_ptr = layer(tc)
+        # tc = self.target_center[-1](tc)
+
+        # offset = torch.cat([off_sc, off_lc], dim=1)
+
+        # result_list = [lc, sc, tc, ctx_ptr, offset]
+
+        # return result_list
 
     def forward(self, feats):
 
@@ -569,6 +594,18 @@ class ExtremeHeadV4(BaseDenseHead):
         center_pointers = transpose_and_gather_feat(ctx_ptr, tc_inds)
         center_pointers = center_pointers.view(batch, -1, 4, 2)
         tc_pointer_res = tc_pos.unsqueeze(-2).repeat(1,1,4,1) + center_pointers
+
+        # sample offset using grid_sample
+        # normalize kpt pos to [-1, 1]
+        # pos_norm_scaler = tc_scores.new_tensor([width // 2, height // 2])
+        # tc_pointer_res_norm = (tc_pointer_res - pos_norm_scaler) / pos_norm_scaler
+        # sc_pointer_refine = F.grid_sample(ec_offset[:,:2,...], tc_pointer_res_norm[:,:,:2,:], 'bilinear', 'zeros', align_corners=False)
+        # lc_pointer_refine = F.grid_sample(ec_offset[:,2:,...], tc_pointer_res_norm[:,:,2:,:], 'bilinear', 'zeros', align_corners=False)
+        # tc_pointer_refine = torch.cat([sc_pointer_refine, lc_pointer_refine], dim=-1)
+        # tc_pointer_refine = tc_pointer_refine.permute(0,2,3,1)
+
+        # tc_pointer_res = tc_pointer_res + tc_pointer_refine
+
         tc_pointer_res_rpt = tc_pointer_res.unsqueeze(-1).repeat(1,1,1,1,k_pts).transpose(-1,-2)
         sc_pos_rpt = sc_pos.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1,1)
         lc_pos_rpt = lc_pos.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1,1)

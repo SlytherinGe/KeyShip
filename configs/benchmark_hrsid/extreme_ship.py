@@ -53,9 +53,9 @@ model = dict(
         num_dets_per_lvl = [0,100],
         ec_conf_thr = 0.01,
         tc_conf_thr = 0.1,
-        sc_ptr_sigma = 0.01,
-        lc_ptr_sigma = 0.01,
-        valid_size_range = [(-1,0), (-1, 2),],
+        sc_ptr_sigma = 0.005,
+        lc_ptr_sigma = 0.005,
+        valid_size_range = [(-1,0), (-1, 2)],
         score_thr = 0.05,
         nms = dict(type='rnms', iou_thr=0.20),
         # nms_cfg = dict(type='soft_rnms', sigma=0.1, min_score=0.3),
@@ -68,7 +68,7 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile', to_float32=True),
     dict(type='LoadAnnotations', with_bbox=True),
-    # dict(type='RResize', img_scale=(800, 800)),
+    dict(type='RResize', img_scale=(800, 800)),
     dict(
         type='RRandomFlip',
         flip_ratio=[0.25, 0.25, 0.25],
@@ -80,20 +80,20 @@ train_pipeline = [
         angles_range=180,
         auto_bound=False,
         version='oc'),
-    dict(
-        type='RRandomCenterCropPad',
-        crop_size=(511, 511),
-        ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
-        test_mode=False,
-        test_pad_mode=None,
-        **img_norm_cfg),
+    # dict(
+    #     type='RRandomCenterCropPad',
+    #     crop_size=(511, 511),
+    #     ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
+    #     test_mode=False,
+    #     test_pad_mode=None,
+    #     **img_norm_cfg),
     # dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
     # dict(type='BrightnessTransform', level=3, prob=0.3),
     # dict(type='ContrastTransform', level=3, prob=0.3),
     # dict(type='EqualizeTransform', prob=0.3),
-    dict(type='RResize', img_scale=(511, 511)),
+    # dict(type='RResize', img_scale=(800, 800)),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(511, 511)),
+    dict(type='Pad', size=(800, 800)),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
@@ -113,7 +113,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=1,
     workers_per_gpu=2,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
