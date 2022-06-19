@@ -28,7 +28,7 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
-        center_pointer_cfg = BASE_CONV_SETTING + [('conv',     ('out',     8))],
+        center_pointer_cfg = [('conv',     ('out',     8))],
         ec_offset_cfg = [('conv',     ('out',     2))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
@@ -80,17 +80,11 @@ train_pipeline = [
         angles_range=180,
         auto_bound=False,
         version='oc'),
-    # dict(
-    #     type='RRandomCenterCropPad',
-    #     crop_size=(511, 511),
-    #     ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
-    #     test_mode=False,
-    #     test_pad_mode=None,
-    #     **img_norm_cfg),
-    # dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
-    # dict(type='BrightnessTransform', level=3, prob=0.3),
-    # dict(type='ContrastTransform', level=3, prob=0.3),
-    # dict(type='EqualizeTransform', prob=0.3),
+    dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
+    dict(type='BrightnessTransform', level=3, prob=0.3),
+    dict(type='ContrastTransform', level=3, prob=0.3),
+    dict(type='EqualizeTransform', prob=0.3),
+    dict(type='CutOut', n_holes=[0, 10], cutout_ratio=[(0.001, 0.001), (0.01, 0.01), (0.005)]),
     # dict(type='RResize', img_scale=(800, 800)),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size=(800, 800)),
@@ -113,7 +107,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=1,
+    samples_per_gpu=2,
     workers_per_gpu=2,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),

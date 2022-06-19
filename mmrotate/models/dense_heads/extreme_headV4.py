@@ -298,33 +298,7 @@ class ExtremeHeadV4(BaseDenseHead):
         '''
             during training, all_cls_scores, all_bbox_preds, all_center_dets are replaced with lc, sc, tc
         '''
-        lc, sc, tc, ctx_ptr = x, x, x, x
-
-        for layer in self.longside_center[:-1]:
-            lc = layer(lc)
-        for layer in self.shortside_center[:-1]:
-            sc = layer(sc)
-        
-        off_lc = self.lc_offset[-1](lc)
-        off_sc = self.sc_offset[-1](sc)
-
-        lc = self.longside_center[-1](lc)
-        sc = self.shortside_center[-1](sc)
-
-        for layer in self.target_center[:-1]:
-            tc = layer(tc)
-
-        for layer in self.center_pointer:
-            ctx_ptr = layer(ctx_ptr)
-            
-        tc = self.target_center[-1](tc)
-
-        offset = torch.cat([off_sc, off_lc], dim=1)
-
-        result_list = [lc, sc, tc, ctx_ptr, offset]
-
-        return result_list
-        # lc, sc, tc = x, x, x
+        # lc, sc, tc, ctx_ptr = x, x, x, x
 
         # for layer in self.longside_center[:-1]:
         #     lc = layer(lc)
@@ -341,7 +315,8 @@ class ExtremeHeadV4(BaseDenseHead):
         #     tc = layer(tc)
 
         # for layer in self.center_pointer:
-        #     ctx_ptr = layer(tc)
+        #     ctx_ptr = layer(ctx_ptr)
+            
         # tc = self.target_center[-1](tc)
 
         # offset = torch.cat([off_sc, off_lc], dim=1)
@@ -349,6 +324,31 @@ class ExtremeHeadV4(BaseDenseHead):
         # result_list = [lc, sc, tc, ctx_ptr, offset]
 
         # return result_list
+        lc, sc, tc = x, x, x
+
+        for layer in self.longside_center[:-1]:
+            lc = layer(lc)
+        for layer in self.shortside_center[:-1]:
+            sc = layer(sc)
+        
+        off_lc = self.lc_offset[-1](lc)
+        off_sc = self.sc_offset[-1](sc)
+
+        lc = self.longside_center[-1](lc)
+        sc = self.shortside_center[-1](sc)
+
+        for layer in self.target_center[:-1]:
+            tc = layer(tc)
+
+        for layer in self.center_pointer:
+            ctx_ptr = layer(tc)
+        tc = self.target_center[-1](tc)
+
+        offset = torch.cat([off_sc, off_lc], dim=1)
+
+        result_list = [lc, sc, tc, ctx_ptr, offset]
+
+        return result_list
 
     def forward(self, feats):
 

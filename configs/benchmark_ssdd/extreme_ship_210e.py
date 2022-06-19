@@ -29,7 +29,7 @@ model = dict(
                             [('conv',     ('out',     NUM_CLASS))],
         target_center_cfg = BASE_CONV_SETTING + \
                             [('conv',     ('out',     NUM_CLASS))],
-        center_pointer_cfg = BASE_CONV_SETTING + [('conv',     ('out',     8))],
+        center_pointer_cfg = [('conv',     ('out',     8))],
         ec_offset_cfg = [('conv',     ('out',     2))],
         regress_ratio=((-1, 2),(-1, 2)),
         loss_heatmap=dict(
@@ -82,6 +82,11 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=None,
         version=angle_version),
+    dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
+    dict(type='BrightnessTransform', level=3, prob=0.3),
+    dict(type='ContrastTransform', level=3, prob=0.3),
+    dict(type='EqualizeTransform', prob=0.3),
+    dict(type='CutOut', n_holes=[0, 10], cutout_ratio=[(0.001, 0.001), (0.01, 0.01), (0.005)]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', pad_to_square=True),
     # dict(type='InstanceMaskGenerator'),
@@ -119,12 +124,12 @@ work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship_210e'
 # evaluation
 evaluation = dict(interval=1, metric='details', save_best='auto')
 # optimizer
-optimizer = dict(type='Adam', lr=0.0004, weight_decay=0.0001)
+optimizer = dict(type='Adam', lr=0.0002, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 runner = dict(type='EpochBasedRunner', max_epochs=210)
 lr_config = dict(policy='step',
                 warmup='linear',
                 warmup_iters=50,
                 warmup_ratio=1.0 / 3,
-                 step=[190])
+                 step=[150, 200])
 checkpoint_config = dict(interval=21)
