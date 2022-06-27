@@ -84,7 +84,7 @@ train_pipeline = [
     dict(type='BrightnessTransform', level=3, prob=0.3),
     dict(type='ContrastTransform', level=3, prob=0.3),
     dict(type='EqualizeTransform', prob=0.3),
-    dict(type='CutOut', n_holes=[0, 10], cutout_ratio=[(0.001, 0.001), (0.01, 0.01), (0.005)]),
+    # dict(type='CutOut', n_holes=(0, 10), cutout_ratio=[(0.001, 0.001), (0.01, 0.01), (0.005, 0.005)]),
     # dict(type='RResize', img_scale=(800, 800)),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size=(800, 800)),

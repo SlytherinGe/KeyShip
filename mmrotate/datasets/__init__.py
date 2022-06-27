@@ -7,7 +7,8 @@ from .pipelines import *  # noqa: F401, F403
 from .sar import SARDataset  # noqa: F401, F403
 from .ssdd_voc import SSDDDataset, SSDDDatasetOfficial
 from .HRSID import HRSIDDataset
+from .rsdd import RSDDDataset
 
 __all__ = ['SARDataset', 'DOTADataset', 'build_dataset', 'HRSCDataset']
 
-__all__.extend(['SSDDDataset', 'SSDDDatasetOfficial', 'HRSIDDataset'])
+__all__.extend(['SSDDDataset', 'SSDDDatasetOfficial', 'HRSIDDataset', 'RSDDDataset'])

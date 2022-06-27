@@ -1,10 +1,10 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py', #'../_base_/schedules/schedule_benchmark_6x.py',
+    '../_base_/datasets/rsdd.py', '../_base_/schedules/schedule_benchmark_210e.py',
     '../_base_/benchmark_runtime.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('drop', 256)),
-                    ('conv',     ('drop', 256))]
+BASE_CONV_SETTING = [('conv',     ('default', 256)),
+                    ('conv',     ('default', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'
@@ -88,7 +88,6 @@ train_pipeline = [
     dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', pad_to_square=True),
-    # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
@@ -119,16 +118,4 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship_210e'
-# evaluation
-evaluation = dict(interval=1, metric='details', save_best='auto')
-# optimizer
-optimizer = dict(type='Adam', lr=0.0006, weight_decay=0.0001)
-optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
-runner = dict(type='EpochBasedRunner', max_epochs=210)
-lr_config = dict(policy='step',
-                warmup='linear',
-                warmup_iters=50,
-                warmup_ratio=1.0 / 3,
-                 step=[150, 200])
-checkpoint_config = dict(interval=21)
+work_dir = '../exp_results/mmlab_results/rsdd/benchmark/extreme_ship_210e'
