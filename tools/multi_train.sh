@@ -17,9 +17,7 @@
 # python tools/train.py configs/extreme_ship/backup1.py --seed 42
 # wait
 
-bash tools/dist_train.sh configs/benchmark_rsdd/S2ANet.py 2 --seed 42
+bash tools/dist_train.sh configs/benchmark_rsdd/gliding_vertex.py 2 --seed 42
 wait
-bash tools/dist_train.sh configs/benchmark_rsdd/roi_transformer.py 2 --seed 42
-wait
-bash tools/dist_train.sh configs/benchmark_rsdd/oriented_rcnn.py 2 --seed 42
+bash tools/dist_train.sh configs/benchmark_rsdd/r3det.py 2 --seed 42
 wait
