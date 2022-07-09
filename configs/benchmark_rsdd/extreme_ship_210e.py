@@ -3,8 +3,8 @@ _base_ = [
     '../_base_/benchmark_runtime.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('default', 256)),
-                    ('conv',     ('default', 256))]
+BASE_CONV_SETTING = [('conv',     ('LReLU', 256)),
+                    ('conv',     ('LReLU', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'
@@ -17,7 +17,7 @@ model = dict(
         num_stacks=2,
         stage_channels=[256, 256, 384, 384, 384, 512],
         stage_blocks=[2, 2, 2, 2, 2, 4],
-        norm_cfg=dict(type='SyncBN', requires_grad=True)),
+        norm_cfg=dict(type='BN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
         type='ExtremeHeadV4',
@@ -119,3 +119,4 @@ data = dict(
             pipeline=test_pipeline))
 
 work_dir = '../exp_results/mmlab_results/rsdd/benchmark/extreme_ship_210e'
+load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/'

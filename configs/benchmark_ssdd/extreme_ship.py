@@ -3,8 +3,8 @@ _base_ = [
     '../_base_/benchmark_runtime.py'
 ]
 
-BASE_CONV_SETTING = [('conv',     ('default', 256)),
-                    ('conv',     ('default', 256))]
+BASE_CONV_SETTING = [('conv',     ('GELU', 256)),
+                    ('conv',     ('GELU', 256))]
 NUM_CLASS=1
 INF = 1e8
 angle_version = 'oc'
@@ -116,7 +116,7 @@ data = dict(
             pipeline=test_pipeline))
 
 work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship'
-load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
+#load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
 # # evaluation
 # evaluation = dict(interval=1, metric='details', save_best='auto')
 # # optimizer

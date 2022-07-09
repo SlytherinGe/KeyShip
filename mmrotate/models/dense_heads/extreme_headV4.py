@@ -196,6 +196,8 @@ class ExtremeHeadV4(BaseDenseHead):
                 elif mode == 'out':
                     act_cfg = None
                     norm_cfg = None
+                elif mode == 'LReLU':
+                    act_cfg = dict(type='LeakyReLU')
                 conv = ConvModule(
                     in_ch,
                     out_ch,
