@@ -1,14 +1,15 @@
 _base_ = [
-    '../_base_/datasets/rsdd.py', '../_base_/schedules/schedule_benchmark_6x.py',
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_benchmark_6x.py',
     '../_base_/benchmark_runtime.py'
 ]
-angle_version = 'oc'
-norm_cfg = dict(type='GN', num_groups=32, requires_grad=True)
+angle_version = 'le90'
+
+# model settings
 model = dict(
-    type='RotatedRepPoints',
+    type='RotatedFCOS',
     backbone=dict(
         type='ResNet',
-        depth=50,
+        depth=101,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
@@ -16,61 +17,46 @@ model = dict(
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
-        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet101')),
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
         start_level=1,
-        add_extra_convs='on_input',
+        add_extra_convs='on_output',  # use P5
         num_outs=5,
-        norm_cfg=norm_cfg),
+        relu_before_extra_convs=True),
     bbox_head=dict(
-        type='OrientedRepPointsHead',
-        num_classes=15,
+        type='RotatedFCOSHead',
+        num_classes=1,
         in_channels=256,
+        stacked_convs=4,
         feat_channels=256,
-        point_feat_channels=256,
-        stacked_convs=3,
-        num_points=9,
-        gradient_mul=0.3,
-        point_strides=[8, 16, 32, 64, 128],
-        point_base_scale=2,
-        norm_cfg=norm_cfg,
+        strides=[8, 16, 32, 64, 128],
+        center_sampling=True,
+        center_sample_radius=1.5,
+        norm_on_bbox=True,
+        centerness_on_reg=True,
+        separate_angle=False,
+        scale_angle=True,
+        bbox_coder=dict(
+            type='DistanceAnglePointCoder', angle_version=angle_version),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        loss_bbox_init=dict(type='ConvexGIoULoss', loss_weight=0.375),
-        loss_bbox_refine=dict(type='ConvexGIoULoss', loss_weight=1.0),
-        loss_spatial_init=dict(type='SpatialBorderLoss', loss_weight=0.05),
-        loss_spatial_refine=dict(type='SpatialBorderLoss', loss_weight=0.1),
-        init_qua_weight=0.2,
-        top_ratio=0.4),
+        loss_bbox=dict(type='RotatedIoULoss', loss_weight=1.0),
+        loss_centerness=dict(
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
     # training and testing settings
-    train_cfg=dict(
-        init=dict(
-            assigner=dict(type='ConvexAssigner', scale=4, pos_num=1),
-            allowed_border=-1,
-            pos_weight=-1,
-            debug=False),
-        refine=dict(
-            assigner=dict(
-                type='MaxConvexIoUAssigner',
-                pos_iou_thr=0.1,
-                neg_iou_thr=0.1,
-                min_pos_iou=0,
-                ignore_iof_thr=-1),
-            allowed_border=-1,
-            pos_weight=-1,
-            debug=False)),
+    train_cfg=None,
     test_cfg=dict(
         nms_pre=2000,
         min_bbox_size=0,
         score_thr=0.05,
-        nms=dict(iou_thr=0.4),
+        nms=dict(iou_thr=0.1),
         max_per_img=2000))
 
 img_norm_cfg = dict(
@@ -102,4 +88,4 @@ data = dict(
     val=dict(version=angle_version),
     test=dict(version=angle_version))
 
-work_dir = '../exp_results/mmlab_results/rsdd/benchmark/oriented_reppoints'
+work_dir = '../exp_results/mmlab_results/ssdd/benchmark/rotated_fcos'

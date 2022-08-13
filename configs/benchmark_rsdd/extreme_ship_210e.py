@@ -46,7 +46,7 @@ model = dict(
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        gaussioan_sigma_ratio = (0.1, 0.1)
+        gaussioan_sigma_ratio = (0.2, 0.2)
     ),
     test_cfg = dict(
         cache_cfg = None,
@@ -118,5 +118,5 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '../exp_results/mmlab_results/rsdd/benchmark/extreme_ship_210e'
-load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/'
+work_dir = '../exp_results/mmlab_results/rsdd/benchmark/extreme_ship_210e_sigma_ratio04'
+load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'

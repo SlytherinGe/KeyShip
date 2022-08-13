@@ -17,7 +17,7 @@ model = dict(
         num_stacks=2,
         stage_channels=[256, 256, 384, 384, 384, 512],
         stage_blocks=[2, 2, 2, 2, 2, 4],
-        norm_cfg=dict(type='SyncBN', requires_grad=True)),
+        norm_cfg=dict(type='BN', requires_grad=True)),
     neck=None,
     bbox_head=dict(
         type='ExtremeHeadV4',
@@ -46,7 +46,7 @@ model = dict(
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        gaussioan_sigma_ratio = (0.1, 0.1)
+        gaussioan_sigma_ratio = (0.25, 0.25)
     ),
     test_cfg = dict(
         cache_cfg = None,
@@ -120,3 +120,4 @@ data = dict(
             pipeline=test_pipeline))
 
 work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship_210e'
+load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
