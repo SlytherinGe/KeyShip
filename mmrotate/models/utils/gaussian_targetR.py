@@ -476,12 +476,43 @@ def generate_center_pointer_map(tc:torch.Tensor, sc, lc, ctx_ptr_map:torch.Tenso
 
     return gt_ptr_map
 
+def generate_center_pointer_map_rigid(tc:torch.Tensor, sc, lc, ctx_ptr_map:torch.Tensor, gt_ptr_map:torch.Tensor):
+    '''
+        tc: tensor [x, y]
+        sc: tuple|list(tesor, tensor)
+        lc: tuple|list(tesor, tensor)
+        ctx_ptr_map: tensor [8, feat_h, feat_w]
+        gt_ptr_map: tensor [8, feat_h, feat_w]
+    '''
+    feat_h, feat_w = ctx_ptr_map.shape[-2:]
+    tc_ind = tc.long()
+    if tc_ind[0] >= feat_w or tc_ind[1] >= feat_h or tc_ind.lt(0).sum().gt(0):
+        return gt_ptr_map
+    tc_ctx_ptr = ctx_ptr_map[:, tc_ind[1], tc_ind[0]].view(4, 2)
+    tc_ptr_res = tc_ind[None] + tc_ctx_ptr + 0.5
+    all_sc_pos = torch.stack(sc)
+    all_lc_pos = torch.stack(lc)
+    target_sc = all_sc_pos if all_sc_pos[0,0] < all_sc_pos[1,0] else torch.flipud(all_sc_pos)
+    target_lc = all_lc_pos if all_lc_pos[0,0] < all_lc_pos[1,0] else torch.flipud(all_lc_pos)
+
+    target_ec = torch.cat([target_sc, target_lc], dim=0)
+    target_ptr = (target_ec - tc_ind[None] - 0.5).view(-1)
+    gt_ptr_map[:, tc_ind[1], tc_ind[0]] = target_ptr
+
+    return gt_ptr_map
+
 def generate_center_pointer_map2(tc:torch.Tensor,
                                  sc, lc,
                                  ctx_ptr_map:torch.Tensor, 
                                  gt_ptr_map:torch.Tensor, 
-                                 w, h, a, sigma_ratio):
+                                 w, h, a, sigma_ratio,
+                                 rigid=False):
     feat_h, feat_w = ctx_ptr_map.shape[-2:]
+    if rigid:
+        fun_pointer_map = generate_center_pointer_map_rigid
+    else:
+        fun_pointer_map = generate_center_pointer_map
+        
     if tc[0] >= feat_w or tc[1] >= feat_h or tc.lt(0).sum().gt(0):
         return gt_ptr_map
     temp_mask = ctx_ptr_map.new_zeros((feat_h, feat_w))
@@ -489,7 +520,7 @@ def generate_center_pointer_map2(tc:torch.Tensor,
     y, x = (temp_mask > 0.5).nonzero(as_tuple=True)
     res_pos = list(zip(x, y))
     for pos in res_pos:
-        gt_ptr_map = generate_center_pointer_map(torch.stack(pos), sc, lc, ctx_ptr_map, gt_ptr_map)
+        gt_ptr_map = fun_pointer_map(torch.stack(pos), sc, lc, ctx_ptr_map, gt_ptr_map)
     return gt_ptr_map
 
 def set_offset2(ec:torch.Tensor,

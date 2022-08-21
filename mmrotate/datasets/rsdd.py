@@ -153,7 +153,7 @@ class RSDDDataset(DOTADataset):
                  logger=None,
                  proposal_nums=(100, 300, 1000),
                  iou_thr=[0.5, 0.75],
-                 scale_ranges=[(0, 1e6), (0, 32), (32, 96), (96, 1e6)],
+                 scale_ranges=[(0, 1e6), (0, 25), (25, 86.605), (86.605, 1e6)],
                  use_07_metric=True,
                  nproc=16):
         """Evaluate the dataset.

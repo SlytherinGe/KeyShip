@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init, build_norm_layer, build_activation_layer
+from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
 from mmdet.models.plugins import DropBlock
 import cv2
@@ -125,6 +125,14 @@ class ExtremeHeadV4(BaseDenseHead):
         self.sigma_ratio = self.train_cfg.get('gaussioan_sigma_ratio', (0.1, 0.1))
         self.lc_ptr_sigma = self.test_cfg.get('lc_ptr_sigma', 0.1)
         self.sc_ptr_sigma = self.test_cfg.get('sc_ptr_sigma', 0.01)
+        self.circular_target = self.train_cfg.get('circular_target', False)
+        self.rigid_edge_pointer = self.train_cfg.get('rigid_edge_pointer', False)
+        self.kpt_enable = self.train_cfg.get('kpt_enable', True)
+        self.refine_enable = self.train_cfg.get('refine_enable', True)
+
+        if not self.kpt_enable:
+            self.lc_ptr_sigma = 1e-9
+            self.sc_ptr_sigma = 1e-9
 
         self.train_cache_cfg = self.train_cfg.get('cache_cfg', None)
         self.test_cache_cfg = self.test_cfg.get('cache_cfg', None)
@@ -300,44 +308,26 @@ class ExtremeHeadV4(BaseDenseHead):
         '''
             during training, all_cls_scores, all_bbox_preds, all_center_dets are replaced with lc, sc, tc
         '''
-        # lc, sc, tc, ctx_ptr = x, x, x, x
-
-        # for layer in self.longside_center[:-1]:
-        #     lc = layer(lc)
-        # for layer in self.shortside_center[:-1]:
-        #     sc = layer(sc)
-        
-        # off_lc = self.lc_offset[-1](lc)
-        # off_sc = self.sc_offset[-1](sc)
-
-        # lc = self.longside_center[-1](lc)
-        # sc = self.shortside_center[-1](sc)
-
-        # for layer in self.target_center[:-1]:
-        #     tc = layer(tc)
-
-        # for layer in self.center_pointer:
-        #     ctx_ptr = layer(ctx_ptr)
-            
-        # tc = self.target_center[-1](tc)
-
-        # offset = torch.cat([off_sc, off_lc], dim=1)
-
-        # result_list = [lc, sc, tc, ctx_ptr, offset]
-
-        # return result_list
         lc, sc, tc = x, x, x
+
+        if not self.kpt_enable:
+            lc = lc.detech()
+            sc = sc.detach()
 
         for layer in self.longside_center[:-1]:
             lc = layer(lc)
         for layer in self.shortside_center[:-1]:
             sc = layer(sc)
-        
+
+        lc_res = self.longside_center[-1](lc)
+        sc_res = self.shortside_center[-1](sc)    
+
+        if not self.refine_enable:
+            lc = lc.detach()
+            sc = sc.detach()
+
         off_lc = self.lc_offset[-1](lc)
         off_sc = self.sc_offset[-1](sc)
-
-        lc = self.longside_center[-1](lc)
-        sc = self.shortside_center[-1](sc)
 
         for layer in self.target_center[:-1]:
             tc = layer(tc)
@@ -348,13 +338,22 @@ class ExtremeHeadV4(BaseDenseHead):
 
         offset = torch.cat([off_sc, off_lc], dim=1)
 
-        result_list = [lc, sc, tc, ctx_ptr, offset]
+        result_list = [lc_res, sc_res, tc, ctx_ptr, offset]
 
         return result_list
 
     def forward(self, feats):
 
-        return multi_apply(self.forward_single, feats) 
+        # res = multi_apply(self.forward_single, feats) 
+        # return res
+
+        if self.training:
+            return multi_apply(self.forward_single, feats) 
+        else:
+            results =  self.forward_single(feats[-1])
+            for i in range(len(results)):
+                results[i] = [results[i]]
+            return tuple(results)
 
     def _get_targets_single(self, 
                             center_pointer,
@@ -420,6 +419,10 @@ class ExtremeHeadV4(BaseDenseHead):
             sc = short_side_center[k], short_side_center[k + num_box]
             lc = long_side_center[k], long_side_center[k + num_box]
             w, h, a = gt_bbox[2], gt_bbox[3], gt_bbox[4]
+            # ablation study of circular target
+            if self.circular_target:
+                m_e = min(w, h)
+                w, h = m_e , m_e
             for v, centers in enumerate((tc, sc, lc)):
                 for center in centers:
                     x, y = center[0], center[1]
@@ -431,8 +434,7 @@ class ExtremeHeadV4(BaseDenseHead):
                     if v > 0:
                         gt_offsets[v*2-2: v*2] =  set_offset2(center, gt_offsets[v*2-2: v*2], w, h, a, self.sigma_ratio)
 
-            gt_center_pointer = generate_center_pointer_map2(tc[0], sc, lc, center_pointer, gt_center_pointer, w, h, a, self.sigma_ratio)
-
+            gt_center_pointer = generate_center_pointer_map2(tc[0], sc, lc, center_pointer, gt_center_pointer, w, h, a, self.sigma_ratio, self.rigid_edge_pointer)
 
         target_center_heat = gt_heatmaps[0]
         shortside_center_heat = gt_heatmaps[1]
@@ -597,17 +599,6 @@ class ExtremeHeadV4(BaseDenseHead):
         center_pointers = center_pointers.view(batch, -1, 4, 2)
         tc_pointer_res = tc_pos.unsqueeze(-2).repeat(1,1,4,1) + center_pointers
 
-        # sample offset using grid_sample
-        # normalize kpt pos to [-1, 1]
-        # pos_norm_scaler = tc_scores.new_tensor([width // 2, height // 2])
-        # tc_pointer_res_norm = (tc_pointer_res - pos_norm_scaler) / pos_norm_scaler
-        # sc_pointer_refine = F.grid_sample(ec_offset[:,:2,...], tc_pointer_res_norm[:,:,:2,:], 'bilinear', 'zeros', align_corners=False)
-        # lc_pointer_refine = F.grid_sample(ec_offset[:,2:,...], tc_pointer_res_norm[:,:,2:,:], 'bilinear', 'zeros', align_corners=False)
-        # tc_pointer_refine = torch.cat([sc_pointer_refine, lc_pointer_refine], dim=-1)
-        # tc_pointer_refine = tc_pointer_refine.permute(0,2,3,1)
-
-        # tc_pointer_res = tc_pointer_res + tc_pointer_refine
-
         tc_pointer_res_rpt = tc_pointer_res.unsqueeze(-1).repeat(1,1,1,1,k_pts).transpose(-1,-2)
         sc_pos_rpt = sc_pos.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1,1)
         lc_pos_rpt = lc_pos.unsqueeze(1).unsqueeze(1).repeat(1,k_pts,2,1,1)
@@ -642,8 +633,11 @@ class ExtremeHeadV4(BaseDenseHead):
         lc_kpt_pos_norm = (lc_kpt_pos - pos_norm_scaler) / pos_norm_scaler
         sc_kpt_off = F.grid_sample(ec_offset[:,:2,...], sc_kpt_pos_norm, 'bilinear', 'zeros', align_corners=False)
         lc_kpt_off = F.grid_sample(ec_offset[:,2:,...], lc_kpt_pos_norm, 'bilinear', 'zeros', align_corners=False)
-        sc_kpt_pos = sc_kpt_pos.floor() + 0.5 + sc_kpt_off.permute(0,2,3,1)
-        lc_kpt_pos = lc_kpt_pos.floor() + 0.5 + lc_kpt_off.permute(0,2,3,1)
+        sc_kpt_pos = sc_kpt_pos.floor() + 0.5
+        lc_kpt_pos = lc_kpt_pos.floor() + 0.5
+        if self.refine_enable:
+            sc_kpt_pos = sc_kpt_pos + sc_kpt_off.permute(0,2,3,1)
+            lc_kpt_pos = sc_kpt_pos + lc_kpt_off.permute(0,2,3,1)            
 
         # generate final results
         scores = (tc_scores * 2 + sc_kpt_score.squeeze(-1).sum(-1) + lc_kpt_score.squeeze(-1).sum(-1)) / 6
@@ -775,19 +769,22 @@ class ExtremeHeadV4(BaseDenseHead):
             #         data_dict['data']['extra_{}'.format(k)] = arg
             self.data_queue.put(data_dict)
 
-        assert len(list_longside_center) == len(list_shortside_center)  and \
-            len(list_shortside_center) == len(list_target_center) and \
-            len(list_longside_center) == len(list_center_pointer) and \
-            len(list_longside_center) == len(list_ec_offset) and \
-            len(list_center_pointer) == len(self.list_num_pkts_per_lvl)
+        # assert len(list_longside_center) == len(list_shortside_center)  and \
+        #     len(list_shortside_center) == len(list_target_center) and \
+        #     len(list_longside_center) == len(list_center_pointer) and \
+        #     len(list_longside_center) == len(list_ec_offset) and \
+        #     len(list_center_pointer) == len(self.list_num_pkts_per_lvl)
 
-        if self.valid_size_range is not None:
-            assert len(self.valid_size_range) == len(list_target_center)
+        # if self.valid_size_range is not None:
+        #     assert len(self.valid_size_range) == len(list_target_center)
 
         # result_list = []
         # result_list = [(torch.zeros((1, 6), device=list_longside_center[-1].device, dtype=torch.float32),
         #                 torch.zeros((1,), device=list_longside_center[-1].device, dtype=torch.int64))]
 
+        list_num_pkts_per_lvl = [self.list_num_pkts_per_lvl[-1]]
+        list_num_dets_per_lvl = [self.list_num_dets_per_lvl[-1]]
+        valid_size_range = [self.valid_size_range[-1]]
 
         multi_lvl_bbox_kpts, multi_lvl_scores, multi_lvl_clses = multi_apply(
             self.decode_heatmap_single,
@@ -796,8 +793,8 @@ class ExtremeHeadV4(BaseDenseHead):
             list_shortside_center,
             list_center_pointer,
             list_ec_offset,
-            self.list_num_pkts_per_lvl,
-            self.list_num_dets_per_lvl,
+            list_num_pkts_per_lvl,
+            list_num_dets_per_lvl,
             ec_conf_thr=self.ec_conf_thr,
             tc_conf_thr=self.tc_conf_thr,
         )
@@ -809,7 +806,7 @@ class ExtremeHeadV4(BaseDenseHead):
                                             all_lvl_bbox_scores,
                                             all_lvl_bbox_clses,
                                             img_metas[img_id],
-                                            self.valid_size_range,
+                                            valid_size_range,
                                             rescale=rescale,
                                             with_nms=with_nms)
             result_list.append(results)

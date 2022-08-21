@@ -46,7 +46,9 @@ model = dict(
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        gaussioan_sigma_ratio = (0.25, 0.25)
+        gaussioan_sigma_ratio = (0.25, 0.25),
+        circular_target = True,
+        rigid_edge_pointer = True
     ),
     test_cfg = dict(
         cache_cfg = None,
@@ -119,8 +121,8 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship_sc/e1'
-load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
+work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/test'
+load_from = '/home/gejunyao/下载/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
 
 evaluation = dict(interval=1, metric='details', save_best='auto')
 # optimizer

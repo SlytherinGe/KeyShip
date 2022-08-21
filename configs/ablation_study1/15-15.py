@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/ssdd_official.py',
+    '../_base_/datasets/ssdd_official.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
 
@@ -46,7 +46,7 @@ model = dict(
         ),
         norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
     train_cfg = dict(
-        gaussioan_sigma_ratio = (0.25, 0.25)
+        gaussioan_sigma_ratio = (0.15, 0.15)
     ),
     test_cfg = dict(
         cache_cfg = None,
@@ -119,17 +119,5 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '../exp_results/mmlab_results/ssdd/benchmark/extreme_ship_sc/e1'
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study1/15-15'
 load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
-
-evaluation = dict(interval=1, metric='details', save_best='auto')
-# optimizer
-optimizer = dict(type='Adam', lr=0.0006)
-optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
-runner = dict(type='EpochBasedRunner', max_epochs=160)
-lr_config = dict(policy='step',
-                warmup='linear',
-                warmup_iters=50,
-                warmup_ratio=1.0 / 3,
-                 step=[120])
-checkpoint_config = dict(interval=20)
