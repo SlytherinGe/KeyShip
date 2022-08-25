@@ -311,7 +311,7 @@ class ExtremeHeadV4(BaseDenseHead):
         lc, sc, tc = x, x, x
 
         if not self.kpt_enable:
-            lc = lc.detech()
+            lc = lc.detach()
             sc = sc.detach()
 
         for layer in self.longside_center[:-1]:
