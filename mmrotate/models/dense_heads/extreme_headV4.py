@@ -311,7 +311,7 @@ class ExtremeHeadV4(BaseDenseHead):
         lc, sc, tc = x, x, x
 
         if not self.kpt_enable:
-            lc = lc.detech()
+            lc = lc.detach()
             sc = sc.detach()
 
         for layer in self.longside_center[:-1]:
@@ -637,7 +637,7 @@ class ExtremeHeadV4(BaseDenseHead):
         lc_kpt_pos = lc_kpt_pos.floor() + 0.5
         if self.refine_enable:
             sc_kpt_pos = sc_kpt_pos + sc_kpt_off.permute(0,2,3,1)
-            lc_kpt_pos = sc_kpt_pos + lc_kpt_off.permute(0,2,3,1)            
+            lc_kpt_pos = lc_kpt_pos + lc_kpt_off.permute(0,2,3,1)            
 
         # generate final results
         scores = (tc_scores * 2 + sc_kpt_score.squeeze(-1).sum(-1) + lc_kpt_score.squeeze(-1).sum(-1)) / 6
