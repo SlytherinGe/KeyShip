@@ -73,7 +73,7 @@ class BBAVNeck(BaseModule):
         res = self.dec_convs[0](inputs[-1], inputs[-2])
 
         for i in range(num_imputs - 2):
-            res - self.dec_convs[i+1](res, inputs[-3-i])
+            res = self.dec_convs[i+1](res, inputs[-3-i])
 
         return res
 

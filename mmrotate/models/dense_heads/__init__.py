@@ -20,6 +20,7 @@ from .sam_reppoints_head import SAMRepPointsHead
 from .extreme_headV2 import ExtremeHeadV2
 from .extreme_headV3 import ExtremeHeadV3
 from .extreme_headV4 import ExtremeHeadV4
+from .bbav_head import BBAVHead
 
 __all__ = [
     'RotatedAnchorHead', 'RotatedRetinaHead', 'RotatedRPNHead',
@@ -28,5 +29,5 @@ __all__ = [
     'RotatedRepPointsHead', 'SAMRepPointsHead', 'ExtremeHeadV2',
     'ExtremeHeadV3', 'ExtremeHeadV4',  'CSLRRetinaHead',
     'RotatedATSSHead', 'RotatedAnchorFreeHead', 'RotatedFCOSHead',
-    'CSLRFCOSHead', 'OrientedRepPointsHead'
+    'CSLRFCOSHead', 'OrientedRepPointsHead', 'BBAVHead'
 ]

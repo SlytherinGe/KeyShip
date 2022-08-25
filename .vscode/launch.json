@@ -15,9 +15,8 @@
             //         "--work-dir", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test",
             //         // "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth",
             //         "--seed", "42"]
-            "args": ["configs/extreme_ship/extreme_shipV4_hourglass.py",
-                "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp13/best_mAP_0.5_epoch_195.pth",
-                "--show"]
+            "args": ["configs/bbav/bbav_r50_1x_oc.py", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp1/best_mAP_epoch_138.pth",
+                    "--eval", "mAP"]
         }
     ]
 }
