@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/benchmark_ssdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
+    '../_base_/datasets/benchmark_rsdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
 angle_version = 'oc'
@@ -73,4 +73,4 @@ model = dict(
         nms=dict(iou_thr=0.4),
         max_per_img=2000))
 
-work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/oriented_reppoints'
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5/oriented_reppoints'
