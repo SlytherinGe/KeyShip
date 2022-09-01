@@ -15,7 +15,9 @@ from collections import OrderedDict
 @ROTATED_DATASETS.register_module()
 class SSDDDataset(DOTADataset):
     CLASSES = ('ship', )
-
+    PALETTE = [
+        (0, 255, 0),
+    ]
     def __init__(self, min_size=None, **kwargs):
         assert self.CLASSES or kwargs.get(
             'classes', None), 'CLASSES in `XMLDataset` can not be None.'

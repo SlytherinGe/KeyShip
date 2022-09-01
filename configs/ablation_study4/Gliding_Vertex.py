@@ -2,7 +2,7 @@ _base_ = [
     '../_base_/datasets/benchmark_ssdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
-angle_version = 'oc'
+angle_version = 'le90'
 model = dict(
     type='GlidingVertex',
     backbone=dict(
@@ -121,5 +121,9 @@ model = dict(
             score_thr=0.05,
             nms=dict(iou_thr=0.1),
             max_per_img=2000)))
+data = dict(
+    train=dict(version=angle_version),
+    val=dict(version=angle_version),
+    test=dict(version=angle_version))
 
 work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/gliding_vertex'

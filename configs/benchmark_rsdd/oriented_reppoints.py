@@ -2,7 +2,7 @@ _base_ = [
     '../_base_/datasets/rsdd.py', '../_base_/schedules/schedule_benchmark_6x.py',
     '../_base_/benchmark_runtime.py'
 ]
-angle_version = 'oc'
+angle_version = 'le135'
 norm_cfg = dict(type='GN', num_groups=32, requires_grad=True)
 model = dict(
     type='RotatedRepPoints',

@@ -2,7 +2,7 @@ _base_ = [
     '../_base_/datasets/benchmark_ssdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
-angle_version = 'oc'
+angle_version = 'le135'
 model = dict(
     type='S2ANet',
     backbone=dict(
