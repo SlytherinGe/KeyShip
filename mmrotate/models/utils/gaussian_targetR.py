@@ -16,7 +16,7 @@ def gaussian2D_R(w, h, a, sigma_ratio, dtype=torch.float32, device='cpu'):
     # calculate the min bounding box containing the rotated box
     min_width, min_height = w * cos_theta + abs(h * sin_theta), h * cos_theta + abs(w * sin_theta)
     min_width = min_width *2
-    min_height = min_height *2
+    min_height = min_height *2    
     cx, cy = max(1, int(min_width / 2)), max(1, int(min_height / 2))
 
     X = torch.arange(-cx, cx+1, dtype=dtype, device=device)

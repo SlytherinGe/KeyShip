@@ -70,5 +70,4 @@ model = dict(
         nms=dict(iou_thr=0.1),
         max_per_img=2000))
 
-# work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/gwd'
-work_dir = '/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/test'
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/gwd'
