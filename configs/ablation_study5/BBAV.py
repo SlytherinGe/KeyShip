@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/benchmark_ssdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
+    '../_base_/datasets/benchmark_rsdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
 
@@ -37,7 +37,7 @@ model = dict(
             type='SmoothL1Loss', beta=1.0, loss_weight=1
         ),
         loss_rbox=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=0.1
+            type='SmoothL1Loss', beta=1.0, loss_weight=1
         ),
         loss_theta=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1
@@ -52,5 +52,5 @@ model = dict(
         nms_cfg = dict(type='rnms', iou_thr=0.05),
         max_per_img=100
     ))
-
-work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/bbav'
+optimizer = dict(type='Adam', lr=0.000125)
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5/bbav'

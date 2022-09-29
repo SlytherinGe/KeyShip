@@ -2,7 +2,7 @@ _base_ = [
     '../_base_/datasets/benchmark_rsdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
-angle_version = 'oc'
+angle_version = 'le90'
 model = dict(
     type='RoITransformer',
     backbone=dict(
@@ -11,7 +11,7 @@ model = dict(
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
-        norm_cfg=dict(type='BN', requires_grad=True),
+        norm_cfg=dict(type='SyncBN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet101')),
@@ -173,5 +173,10 @@ model = dict(
             score_thr=0.05,
             nms=dict(type=angle_version, iou_thr=0.1),
             max_per_img=2000)))
-        
-work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5/roitrainsformer'
+
+data = dict(
+    train=dict(version=angle_version),
+    val=dict(version=angle_version),
+    test=dict(version=angle_version))
+optimizer = dict(type='Adam', lr=0.001)        
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5/roitrainsformer_lr'

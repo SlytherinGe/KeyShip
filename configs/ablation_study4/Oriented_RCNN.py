@@ -126,10 +126,4 @@ data = dict(
     val=dict(version=angle_version),
     test=dict(version=angle_version))
 
-data = dict(
-    train=dict(version=angle_version),
-    val=dict(version=angle_version),
-    test=dict(version=angle_version))
-
-
 work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/oriented_rcnn'

@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/benchmark_rsdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
+    '../_base_/datasets/benchmark_ssdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
 
@@ -14,7 +14,7 @@ model = dict(
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
         zero_init_residual=False,
-        norm_cfg=dict(type='SyncBN', requires_grad=True),
+        norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet101')),
@@ -52,5 +52,5 @@ model = dict(
         nms_cfg = dict(type='rnms', iou_thr=0.05),
         max_per_img=100
     ))
-
-work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5/bbav'
+optimizer = dict(type='Adam', lr=0.000125)
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/bbav'

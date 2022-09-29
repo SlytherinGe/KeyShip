@@ -2,7 +2,7 @@ _base_ = [
     '../_base_/datasets/benchmark_rsdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
-angle_version = 'oc'
+angle_version = 'le135'
 norm_cfg = dict(type='GN', num_groups=32, requires_grad=True)
 model = dict(
     type='RotatedRepPoints',
@@ -72,5 +72,10 @@ model = dict(
         score_thr=0.05,
         nms=dict(iou_thr=0.4),
         max_per_img=2000))
+
+data = dict(
+    train=dict(version=angle_version),
+    val=dict(version=angle_version),
+    test=dict(version=angle_version))
 
 work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5/oriented_reppoints'

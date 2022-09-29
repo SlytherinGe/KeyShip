@@ -225,7 +225,7 @@ class RSDDDataset(DOTADataset):
                     logger=logger,
                     nproc=nproc)
                 mean_aps.append(mean_ap)
-                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
+                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 6)
             # calculate aps, apm, apl at 0.5  
             mean_ap, _ = eval_rbbox_map(
                 results,
@@ -236,10 +236,10 @@ class RSDDDataset(DOTADataset):
                 use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            eval_results['mAP@.50'] = round(mean_ap[0], 3)  
-            eval_results['mAP_s@.50'] = round(mean_ap[1], 3)
-            eval_results['mAP_m@.50'] = round(mean_ap[2], 3)
-            eval_results['mAP_l@.50'] = round(mean_ap[3], 3)      
+            eval_results['mAP@.50'] = round(mean_ap[0], 6)  
+            eval_results['mAP_s@.50'] = round(mean_ap[1], 6)
+            eval_results['mAP_m@.50'] = round(mean_ap[2], 6)
+            eval_results['mAP_l@.50'] = round(mean_ap[3], 6)      
             mean_ap, _ = eval_rbbox_map(
                 results,
                 annotations,
@@ -249,10 +249,10 @@ class RSDDDataset(DOTADataset):
                 use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            eval_results['mAP@.75'] = round(mean_ap[0], 3)  
-            eval_results['mAP_s@.75'] = round(mean_ap[1], 3)
-            eval_results['mAP_m@.75'] = round(mean_ap[2], 3) 
-            eval_results['mAP_l@.75'] = round(mean_ap[3], 3)    
+            eval_results['mAP@.75'] = round(mean_ap[0], 6)  
+            eval_results['mAP_s@.75'] = round(mean_ap[1], 6)
+            eval_results['mAP_m@.75'] = round(mean_ap[2], 6) 
+            eval_results['mAP_l@.75'] = round(mean_ap[3], 6)    
             eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
             eval_results.move_to_end('mAP', last=False)        
         else:
