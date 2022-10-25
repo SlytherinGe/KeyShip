@@ -126,3 +126,4 @@ tmp
 # custom
 mmrotate/.mim
 data/*
+exp_results
