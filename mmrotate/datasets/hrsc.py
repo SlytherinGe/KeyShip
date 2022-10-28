@@ -1,4 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+import os
 import os.path as osp
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
@@ -192,6 +193,7 @@ class HRSCDataset(CustomDataset):
                                                               dtype=np.float32)
 
             data_infos.append(data_info)
+        self.img_prefix = osp.join(self.img_prefix, self.img_subdir)
         return data_infos
 
     def _filter_imgs(self):
@@ -203,16 +205,15 @@ class HRSCDataset(CustomDataset):
                 valid_inds.append(i)
         return valid_inds
 
-    def evaluate(
-            self,
-            results,
-            metric='mAP',
-            logger=None,
-            proposal_nums=(100, 300, 1000),
-            iou_thr=[0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
-            scale_ranges=None,
-            use_07_metric=True,
-            nproc=4):
+    def evaluate(self,
+                 results,
+                 metric='mAP',
+                 logger=None,
+                 proposal_nums=(100, 300, 1000),
+                 iou_thr=[0.5, 0.75],
+                 scale_ranges=[(0, 1e6), (0, 25), (25, 86.605), (86.605, 1e6)],
+                 use_07_metric=True,
+                 nproc=16):
         """Evaluate the dataset.
 
         Args:
@@ -228,38 +229,43 @@ class HRSCDataset(CustomDataset):
                 Default: 0.5.
             scale_ranges (list[tuple] | None): Scale ranges for evaluating mAP.
                 Default: None.
-            use_07_metric (bool): Whether to use the voc07 metric.
             nproc (int): Processes used for computing TP and FP.
                 Default: 4.
         """
+        nproc = min(nproc, os.cpu_count())
         if not isinstance(metric, str):
             assert len(metric) == 1
             metric = metric[0]
-        allowed_metrics = ['mAP', 'recall']
+        allowed_metrics = ['mAP', 'details']
         if metric not in allowed_metrics:
             raise KeyError(f'metric {metric} is not supported')
-
         annotations = [self.get_ann_info(i) for i in range(len(self))]
         eval_results = OrderedDict()
-        iou_thrs = [iou_thr] if isinstance(iou_thr, float) else iou_thr
         if metric == 'mAP':
-            assert isinstance(iou_thrs, list)
-            mean_aps = []
-            for iou_thr in iou_thrs:
-                print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
+            if isinstance(iou_thr, list):
+                for iou in iou_thr:
+                    mean_ap, _ = eval_rbbox_map(
+                        results,
+                        annotations,
+                        scale_ranges=None,
+                        iou_thr=iou,
+                        dataset=self.CLASSES,
+                        use_07_metric=use_07_metric,
+                        logger=logger,
+                        nproc=nproc)
+                    eval_results['mAP_{:.2}'.format(iou)] = round(mean_ap, 3)                  
+            else:
+                assert isinstance(iou_thr, float)
                 mean_ap, _ = eval_rbbox_map(
                     results,
                     annotations,
-                    scale_ranges=scale_ranges,
+                    scale_ranges=None,
                     iou_thr=iou_thr,
-                    use_07_metric=use_07_metric,
                     dataset=self.CLASSES,
+                    use_07_metric=use_07_metric,
                     logger=logger,
                     nproc=nproc)
-                mean_aps.append(mean_ap)
-                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
-            eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
-            eval_results.move_to_end('mAP', last=False)
+                eval_results['mAP'] = mean_ap
         elif metric == 'details':
             iou_thrs = [0.5+0.05*i for i in range(10)]
             mean_aps = []
@@ -275,7 +281,7 @@ class HRSCDataset(CustomDataset):
                     logger=logger,
                     nproc=nproc)
                 mean_aps.append(mean_ap)
-                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 3)
+                eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 6)
             # calculate aps, apm, apl at 0.5  
             mean_ap, _ = eval_rbbox_map(
                 results,
@@ -286,10 +292,10 @@ class HRSCDataset(CustomDataset):
                 use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            eval_results['mAP@.50'] = mean_ap[0]  
-            eval_results['mAP_s@.50'] = mean_ap[1]
-            eval_results['mAP_m@.50'] = mean_ap[2] 
-            eval_results['mAP_l@.50'] = mean_ap[3]      
+            eval_results['mAP@.50'] = round(mean_ap[0], 6)  
+            eval_results['mAP_s@.50'] = round(mean_ap[1], 6)
+            eval_results['mAP_m@.50'] = round(mean_ap[2], 6)
+            eval_results['mAP_l@.50'] = round(mean_ap[3], 6)      
             mean_ap, _ = eval_rbbox_map(
                 results,
                 annotations,
@@ -299,13 +305,13 @@ class HRSCDataset(CustomDataset):
                 use_07_metric=False,
                 logger=logger,
                 nproc=nproc)    
-            eval_results['mAP@.75'] = mean_ap[0]  
-            eval_results['mAP_s@.75'] = mean_ap[1]
-            eval_results['mAP_m@.75'] = mean_ap[2] 
-            eval_results['mAP_l@.75'] = mean_ap[3]    
+            eval_results['mAP@.75'] = round(mean_ap[0], 6)  
+            eval_results['mAP_s@.75'] = round(mean_ap[1], 6)
+            eval_results['mAP_m@.75'] = round(mean_ap[2], 6) 
+            eval_results['mAP_l@.75'] = round(mean_ap[3], 6)    
             eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
-            eval_results.move_to_end('mAP', last=False)   
-        elif metric == 'recall':
+            eval_results.move_to_end('mAP', last=False)        
+        else:
             raise NotImplementedError
 
         return eval_results
