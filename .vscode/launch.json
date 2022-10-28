@@ -11,12 +11,12 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["configs/rotated_retinanet/soft_retinanet_obb_r50_fpn_le90_exp.py",
-                    "--work-dir", "/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/test",
-                    // "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth",
-                    "--seed", "42"]
-            // "args": ["configs/bbav/bbav_r50_1x_oc.py", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp1/best_mAP_epoch_138.pth",
-            //         "--eval", "mAP"]
+            // "args": ["configs/rotated_retinanet/soft_retinanet_obb_r50_fpn_le90_exp.py",
+            //         "--work-dir", "/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/test",
+            //         // "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth",
+            //         "--seed", "42"]
+            "args": ["/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/ablation_study4/rretinanet/RRetinaNet.py", "/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/ablation_study4/rretinanet/best_mAP_epoch_150.pth",
+                    "--eval", "details"]
         }
     ]
 }

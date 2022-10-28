@@ -350,7 +350,7 @@ class ExtremeHeadV4(BaseDenseHead):
         if self.training:
             return multi_apply(self.forward_single, feats) 
         else:
-            results =  self.forward_single(feats[-1])
+            results =  self.forward_single(feats[0])
             for i in range(len(results)):
                 results[i] = [results[i]]
             return tuple(results)

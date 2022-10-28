@@ -211,7 +211,7 @@ class SSDDDataset(DOTADataset):
             mean_aps = []
             for iou_thr in iou_thrs:
                 print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
-                mean_ap, _ = eval_rbbox_map(
+                mean_ap, raw_results = eval_rbbox_map(
                     results,
                     annotations,
                     scale_ranges=None,
@@ -220,8 +220,18 @@ class SSDDDataset(DOTADataset):
                     dataset=self.CLASSES,
                     logger=logger,
                     nproc=nproc)
+                f_measure_list = []
+                for class_result in raw_results:
+                    precisions = class_result['precision']
+                    recalls = class_result['recall']
+                    top = recalls * precisions
+                    down = recalls + precisions
+                    f_measure = np.mean(2*(top/down))
+                    f_measure_list.append(f_measure)
+                f_score = np.mean(np.array(f_measure_list))
                 mean_aps.append(mean_ap)
                 eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 6)
+                eval_results[f'F1@{int(iou_thr * 100):02d}'] = round(f_score, 6)
             # calculate aps, apm, apl at 0.5  
             mean_ap, _ = eval_rbbox_map(
                 results,
