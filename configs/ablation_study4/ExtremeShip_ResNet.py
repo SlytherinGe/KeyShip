@@ -66,6 +66,7 @@ model = dict(
         tc_conf_thr = 0.1,
         sc_ptr_sigma = 0.01,
         lc_ptr_sigma = 0.01,
+        test_feat_ind = [0],
         valid_size_range = [(-1, 2)],
         score_thr = 0.05,
         nms = dict(type='rnms', iou_thr=0.20),

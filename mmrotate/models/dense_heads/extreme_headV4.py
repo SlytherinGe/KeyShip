@@ -125,6 +125,7 @@ class ExtremeHeadV4(BaseDenseHead):
         self.sigma_ratio = self.train_cfg.get('gaussioan_sigma_ratio', (0.1, 0.1))
         self.lc_ptr_sigma = self.test_cfg.get('lc_ptr_sigma', 0.1)
         self.sc_ptr_sigma = self.test_cfg.get('sc_ptr_sigma', 0.01)
+        self.test_feat_ind = self.test_cfg.get('test_feat_ind', [-1])
         self.circular_target = self.train_cfg.get('circular_target', False)
         self.rigid_edge_pointer = self.train_cfg.get('rigid_edge_pointer', False)
         self.kpt_enable = self.train_cfg.get('kpt_enable', True)
@@ -350,10 +351,10 @@ class ExtremeHeadV4(BaseDenseHead):
         if self.training:
             return multi_apply(self.forward_single, feats) 
         else:
-            results =  self.forward_single(feats[0])
-            for i in range(len(results)):
-                results[i] = [results[i]]
-            return tuple(results)
+            test_feats = []
+            for ind in self.test_feat_ind:
+                test_feats.append(feats[ind])
+            return multi_apply(self.forward_single, test_feats) 
 
     def _get_targets_single(self, 
                             center_pointer,
@@ -700,7 +701,7 @@ class ExtremeHeadV4(BaseDenseHead):
         valid_score = det_scores > 0
         keep_ind = valid_score[...,0]
         # # keep boxes based on ratio
-        valid_ratio = ((det_rboxes[...,2] / det_rboxes[...,3]) < 8 ) & \
+        valid_ratio = ((det_rboxes[...,2] / det_rboxes[...,3]) < 15 ) & \
                     ((det_rboxes[...,2] / det_rboxes[...,3]) > 0.8 )
         keep_ind =keep_ind & valid_ratio
         det_rboxes = det_rboxes[keep_ind]
