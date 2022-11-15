@@ -14,6 +14,8 @@ from .single_stage import RotatedSingleStageDetector
 from .two_stage import RotatedTwoStageDetector
 from .extreme_ship import ExtremeShip
 from .bbav import BBAV
+from .polar_encodings import PolarEncodings
+from .scattering_sar import ScatteringSAR
 __all__ = [
     'RotatedRetinaNet', 'RotatedFasterRCNN', 'OrientedRCNN', 'RoITransformer',
     'GlidingVertex', 'ReDet', 'R3Det', 'S2ANet', 'RotatedRepPoints',
@@ -21,4 +23,4 @@ __all__ = [
     'RotatedSingleStageDetector', 'RotatedFCOS'
 ]
 
-__all__.extend(['ExtremeShip', 'BBAV'])
+__all__.extend(['ExtremeShip', 'BBAV', 'PolarEncodings', 'ScatteringSAR'])

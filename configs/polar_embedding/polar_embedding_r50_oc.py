@@ -6,7 +6,7 @@ _base_ = [
 angle_version = 'oc'
 # model settings
 model = dict(
-    type='BBAV',
+    type='PolarEncodings',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -24,7 +24,7 @@ model = dict(
         out_channels=256
     ),
     bbox_head=dict(
-        type='BBAVHead',
+        type='PolarEncodingHead',
         in_channels=256,
         head_branches=[dict(type='hm', 
                     out_ch=1,
@@ -34,9 +34,9 @@ model = dict(
                         gamma=4.0,
                         loss_weight=1)),
                 dict(type='wh', 
-                    out_ch=10,
+                    out_ch=8,
                     loss=dict(
-                        type='SmoothL1Loss', 
+                        type='IOUWeightedSmoothL1Loss', 
                         beta=1.0, 
                         loss_weight=1)),
                 dict(type='reg', 
@@ -44,12 +44,6 @@ model = dict(
                     loss=dict(
                         type='SmoothL1Loss', 
                         beta=1.0, 
-                        loss_weight=1)),
-                dict(type='cls_theta', 
-                    out_ch=1,
-                    loss=dict(
-                        type='CrossEntropyLoss', 
-                        use_sigmoid=True, 
                         loss_weight=1))],
     norm_cfg=None),
     train_cfg = None,
@@ -117,7 +111,7 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp4'
+work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/PolarEmbedding/exp1'
 
-optimizer = dict(type='Adam', lr=0.0001)
-checkpoint_config = dict(interval=10)
+optimizer = dict(type='Adam', lr=0.00001)
+checkpoint_config = dict(interval=30)

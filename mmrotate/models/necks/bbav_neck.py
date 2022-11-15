@@ -1,8 +1,7 @@
-from turtle import forward
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-from mmcv.runner import BaseModule, auto_fp16
+from mmcv.runner import BaseModule
 
 from ..builder import ROTATED_NECKS
 
@@ -62,7 +61,8 @@ class BBAVNeck(BaseModule):
 
         for i in range(self.num_ins-1):
             conv_module = CombinationModule(self.in_channels[-1-i],
-                                            self.in_channels[-2-i])
+                                            self.in_channels[-2-i],
+                                            batch_norm=True)
             self.dec_convs.append(conv_module)
 
     def forward(self, inputs):
@@ -75,6 +75,6 @@ class BBAVNeck(BaseModule):
         for i in range(num_imputs - 2):
             res = self.dec_convs[i+1](res, inputs[-3-i])
 
-        return res
+        return [res]
 
 

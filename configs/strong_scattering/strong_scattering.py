@@ -6,54 +6,43 @@ _base_ = [
 angle_version = 'oc'
 # model settings
 model = dict(
-    type='BBAV',
+    type='ScatteringSAR',
     backbone=dict(
         type='ResNet',
         depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
-        zero_init_residual=False,
+        strides=(1, 2, 2, 1),
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
-        type='BBAVNeck',
-        in_channels=[256, 512, 1024, 2048],
+        type='ACSNeck',
+        in_channels=2048,
         out_channels=256
     ),
     bbox_head=dict(
-        type='BBAVHead',
-        in_channels=256,
-        head_branches=[dict(type='hm', 
-                    out_ch=1,
-                    loss=dict(
-                        type='GaussianFocalLoss',
-                        alpha=2.0,
-                        gamma=4.0,
-                        loss_weight=1)),
-                dict(type='wh', 
-                    out_ch=10,
-                    loss=dict(
-                        type='SmoothL1Loss', 
-                        beta=1.0, 
-                        loss_weight=1)),
-                dict(type='reg', 
-                    out_ch=2,
-                    loss=dict(
-                        type='SmoothL1Loss', 
-                        beta=1.0, 
-                        loss_weight=1)),
-                dict(type='cls_theta', 
-                    out_ch=1,
-                    loss=dict(
-                        type='CrossEntropyLoss', 
-                        use_sigmoid=True, 
-                        loss_weight=1))],
-    norm_cfg=None),
-    train_cfg = None,
+        type='StrongScatteringHead',
+                 num_classes=1,
+                 in_channels=256,
+                 num_feats=256,
+                 up_sample_rate=16,
+                 loss_heatmap=dict(
+                    type='GaussianFocalLoss',
+                    alpha=2.0,
+                    gamma=1.0,
+                    loss_weight=1                     
+                ),
+                 loss_embedding=dict(
+                     type='DenseAssociativeEmbeddingLoss'
+                 )),
+    train_cfg = dict(),
     test_cfg = dict(
+        cache_cfg = dict(
+            root = '/home/slytheringe/FastCache/StrongScattering'
+        ),
         num_dets = 500,
         conf_thr = 0.18,
         version = angle_version,
@@ -80,6 +69,7 @@ train_pipeline = [
         auto_bound=False,
         rect_classes=None,
         version=angle_version),
+    dict(type='SARScatteringMaskGenerator'),
     dict(type='RTranslate', prob=0.3, img_fill_val=0, level=3),
     dict(type='BrightnessTransform', level=3, prob=0.3),
     dict(type='ContrastTransform', level=3, prob=0.3),
@@ -88,7 +78,7 @@ train_pipeline = [
     dict(type='Pad', pad_to_square=True),
     # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels', 'gt_masks'])
 ]
 
 test_pipeline = [
@@ -117,7 +107,8 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp4'
+work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/StrongScattering/exp3'
 
-optimizer = dict(type='Adam', lr=0.0001)
-checkpoint_config = dict(interval=10)
+optimizer = dict(type='Adam', lr=0.00001)
+checkpoint_config = dict(interval=30)
+evaluation = dict(interval=10, metric='mAP', save_best='auto')
