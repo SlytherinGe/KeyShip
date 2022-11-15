@@ -15,6 +15,7 @@ from .gaussian_targetR import (gen_gaussian_targetR, get_local_maximum,
                                generate_ec_from_corner_pts,
                                generate_center_pointer_map,
                                generate_center_pointer_map2)
+from .polar_encode_decode import polar_encode, polar_decode
 
 __all__ = [
     'ORConv2d', 'RotationInvariantPooling', 'ennConv', 'ennReLU', 'ennAvgPool',
@@ -33,4 +34,5 @@ __all__.extend(['gen_gaussian_targetR', 'get_local_maximum',
                 'set_dual_centripetal_shifts',
                 'generate_ec_from_corner_pts',
                 'generate_center_pointer_map',
-                'generate_center_pointer_map2'])
+                'generate_center_pointer_map2',
+                'polar_encode', 'polar_decode'])

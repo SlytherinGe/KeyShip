@@ -3,62 +3,73 @@ _base_ = [
     '../_base_/benchmark_runtime.py'
 ]
 
-angle_version = 'oc'
+BASE_CONV_SETTING = [('conv',     ('LReLU', 256)),
+                    ('conv',     ('LReLU', 256))]
+NUM_CLASS=1
+INF = 1e8
+angle_version = 'le90'
 # model settings
 model = dict(
-    type='BBAV',
+    type='ExtremeShip',
     backbone=dict(
         type='ResNet',
-        depth=50,
+        depth=101,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
-        frozen_stages=1,
-        zero_init_residual=False,
+        frozen_stages=-1,
         norm_cfg=dict(type='BN', requires_grad=True),
         norm_eval=True,
         style='pytorch',
-        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
+        init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet101')),
     neck=dict(
         type='BBAVNeck',
         in_channels=[256, 512, 1024, 2048],
         out_channels=256
     ),
     bbox_head=dict(
-        type='BBAVHead',
+        type='ExtremeHeadV4',
+        num_classes=NUM_CLASS,
         in_channels=256,
-        head_branches=[dict(type='hm', 
-                    out_ch=1,
-                    loss=dict(
-                        type='GaussianFocalLoss',
-                        alpha=2.0,
-                        gamma=4.0,
-                        loss_weight=1)),
-                dict(type='wh', 
-                    out_ch=10,
-                    loss=dict(
-                        type='SmoothL1Loss', 
-                        beta=1.0, 
-                        loss_weight=1)),
-                dict(type='reg', 
-                    out_ch=2,
-                    loss=dict(
-                        type='SmoothL1Loss', 
-                        beta=1.0, 
-                        loss_weight=1)),
-                dict(type='cls_theta', 
-                    out_ch=1,
-                    loss=dict(
-                        type='CrossEntropyLoss', 
-                        use_sigmoid=True, 
-                        loss_weight=1))],
-    norm_cfg=None),
-    train_cfg = None,
+        longside_center_cfg = BASE_CONV_SETTING + \
+                            [('conv',     ('out',     NUM_CLASS))],
+        shortside_center_cfg = BASE_CONV_SETTING + \
+                            [('conv',     ('out',     NUM_CLASS))],
+        target_center_cfg = BASE_CONV_SETTING + \
+                            [('conv',     ('out',     NUM_CLASS))],
+        center_pointer_cfg = [('conv',     ('out',     8))],
+        ec_offset_cfg = [('conv',     ('out',     2))],
+        regress_ratio=((-1, 2),(0, 0),(0, 0),(0, 0),(0, 0)),
+        loss_heatmap=dict(
+            type='GaussianFocalLoss',
+            alpha=2.0,
+            gamma=4.0,
+            loss_weight=1.0               
+        ),
+        loss_pointer=dict(
+            type='SmoothL1Loss', beta=1/8, loss_weight=0.05
+        ),
+        loss_offsets=dict(
+            type='SmoothL1Loss', beta=1/8, loss_weight=0.1
+        ),
+        norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
+    train_cfg = dict(
+        gaussioan_sigma_ratio = (0.25, 0.25)
+    ),
     test_cfg = dict(
-        num_dets = 500,
-        conf_thr = 0.18,
-        version = angle_version,
-        score_thr = 0.1,
-        nms_cfg = dict(type='rnms', iou_thr=0.05),
+        # cache_cfg = dict(
+        #     root = '/home/slytheringe/FastCache',
+        # ),
+        cache_cfg = None,
+        num_kpts_per_lvl = [150],
+        num_dets_per_lvl = [60],
+        ec_conf_thr = 0.01,
+        tc_conf_thr = 0.1,
+        sc_ptr_sigma = 0.01,
+        lc_ptr_sigma = 0.01,
+        test_feat_ind = [0],
+        valid_size_range = [(-1, 2)],
+        score_thr = 0.05,
+        nms = dict(type='rnms', iou_thr=0.20),
         max_per_img=100
     ))
 
@@ -108,16 +119,15 @@ test_pipeline = [
 
 
 data = dict(
-    samples_per_gpu=8,
-    workers_per_gpu=4,
+    samples_per_gpu=2,
+    workers_per_gpu=2,
     train=dict(version=angle_version,
                pipeline=train_pipeline),
     val=dict(version=angle_version,
             pipeline=test_pipeline),
     test=dict(version=angle_version,
             pipeline=test_pipeline))
-
-work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp4'
-
-optimizer = dict(type='Adam', lr=0.0001)
-checkpoint_config = dict(interval=10)
+# optimizer = dict(type='Adam', lr=0.0003)
+# work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/exp29'
+# load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4/extreme_ship_resnet_bbavneck'

@@ -22,6 +22,8 @@ from .extreme_headV3 import ExtremeHeadV3
 from .extreme_headV4 import ExtremeHeadV4
 from .bbav_head import BBAVHead
 from .soft_retina_head import SoftRetinaHead
+from .polar_embedding_head import PolarEncodingHead
+from .strong_scattering_head import StrongScatteringHead
 
 __all__ = [
     'RotatedAnchorHead', 'RotatedRetinaHead', 'RotatedRPNHead',
@@ -30,5 +32,6 @@ __all__ = [
     'RotatedRepPointsHead', 'SAMRepPointsHead', 'ExtremeHeadV2',
     'ExtremeHeadV3', 'ExtremeHeadV4',  'CSLRRetinaHead',
     'RotatedATSSHead', 'RotatedAnchorFreeHead', 'RotatedFCOSHead',
-    'CSLRFCOSHead', 'OrientedRepPointsHead', 'BBAVHead', 'SoftRetinaHead'
+    'CSLRFCOSHead', 'OrientedRepPointsHead', 'BBAVHead', 'SoftRetinaHead',
+    'PolarEncodingHead', 'StrongScatteringHead'
 ]

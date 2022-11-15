@@ -3,7 +3,6 @@ Author: SlytherinGe
 LastEditTime: 2022-02-21 10:41:18
 '''
 import numpy as np
-from sympy import false
 import torch
 import math
 import cv2

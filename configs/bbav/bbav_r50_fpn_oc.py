@@ -19,10 +19,10 @@ model = dict(
         style='pytorch',
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     neck=dict(
-        type='BBAVNeck',
+        type='FPN',
         in_channels=[256, 512, 1024, 2048],
-        out_channels=256
-    ),
+        out_channels=256,
+        num_outs=5),
     bbox_head=dict(
         type='BBAVHead',
         in_channels=256,
@@ -117,7 +117,7 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp4'
+work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/BBAV/exp5'
 
 optimizer = dict(type='Adam', lr=0.0001)
 checkpoint_config = dict(interval=10)

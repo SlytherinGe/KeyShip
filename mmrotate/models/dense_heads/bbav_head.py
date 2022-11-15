@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from mmdet.models.dense_heads.base_dense_head import BaseDenseHead
-from mmcv.cnn import ConvModule, normal_init
+from mmcv.cnn import ConvModule, xavier_init
 from mmcv.runner import force_fp32
 from mmdet.models.utils import gaussian_radius, gen_gaussian_target
 from mmdet.core import multi_apply
@@ -26,40 +26,52 @@ except:  # noqa: E722
 @ROTATED_HEADS.register_module()
 class BBAVHead(BaseDenseHead):
 
-    def __init__(self,  num_classes,
-                        in_channels,
-                        feat_channels=256,
-                        loss_heatmap=dict(
-                            type='GaussianFocalLoss',
-                            alpha=2.0,
-                            gamma=4.0,
-                            loss_weight=1                               
-                        ),
-                        loss_offset=dict(
-                            type='SmoothL1Loss', beta=1.0, loss_weight=1
-                        ),
-                        loss_rbox=dict(
-                            type='SmoothL1Loss', beta=1.0, loss_weight=1
-                        ),
-                        loss_theta=dict(
-                            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1
-                        ),
-                        train_cfg=None,
-                        test_cfg=None,
-                        norm_cfg=None,
-                        init_cfg=None):
+    def __init__(self, 
+                in_channels,
+                feat_channels=256,
+                head_branches=[dict(type='hm', 
+                            out_ch=1,
+                            loss=dict(
+                                type='GaussianFocalLoss',
+                                alpha=2.0,
+                                gamma=4.0,
+                                loss_weight=1)),
+                        dict(type='wh', 
+                            out_ch=10,
+                            loss=dict(
+                                type='SmoothL1Loss', 
+                                beta=1.0, 
+                                loss_weight=1)),
+                        dict(type='reg', 
+                            out_ch=2,
+                            loss=dict(
+                                type='SmoothL1Loss', 
+                                beta=1.0, 
+                                loss_weight=1)),
+                        dict(type='cls_theta', 
+                            out_ch=1,
+                            loss=dict(
+                                type='CrossEntropyLoss', 
+                                use_sigmoid=True, 
+                                loss_weight=1))],
+                train_cfg=None,
+                test_cfg=None,
+                norm_cfg=None,
+                init_cfg=None):
         super().__init__(init_cfg)
         if diff_iou_rotated_2d is None:
             raise ImportError('Please install mmcv-full >= 1.5.0.')
 
-        self.num_classes = num_classes
         self.in_channels = in_channels
         self.feat_channels = feat_channels
-        self.loss_heatmap = None if loss_heatmap == None else build_loss(loss_heatmap)
-        self.loss_offset = None if loss_offset == None else build_loss(loss_offset)
-        self.loss_rbox = None if loss_rbox == None else build_loss(loss_rbox)
-        self.loss_theta = None if loss_theta == None else build_loss(loss_theta)
-
+        # build losses
+        self.losses = dict()
+        for branch in head_branches:
+            branch_type = branch['type']
+            loss_dict = branch['loss']
+            self.losses[branch_type] = None if loss_dict == None else build_loss(loss_dict)
+        self.head_branches = head_branches
+        self.num_classes = head_branches[0].get('out_ch', None)
         self.num_dets = test_cfg.get('num_dets', 500)
         self.conf_thr = test_cfg.get('conf_thr', 0.18)
         self.version = test_cfg.get('version', 'oc')
@@ -72,7 +84,16 @@ class BBAVHead(BaseDenseHead):
     def _init_layers(self):
 
         act_cfg = dict(type='ReLU')
-        self.heatmap_layers = nn.ModuleList([
+        for branch in self.head_branches:
+            branch_type = branch['type']
+            out_channels = branch['out_ch']
+            if branch_type == 'wh':
+                ksize=3
+                psize=1
+            else:
+                ksize=1
+                psize=0
+            convs = nn.ModuleList([
             ConvModule(self.in_channels,
                         self.feat_channels,
                         kernel_size=3,
@@ -81,95 +102,38 @@ class BBAVHead(BaseDenseHead):
                         act_cfg=act_cfg,
                         norm_cfg=self.norm_cfg),
             ConvModule(self.feat_channels,
-                        self.num_classes,
-                        kernel_size=1,
+                        out_channels,
+                        kernel_size=ksize,
+                        padding=psize,
                         act_cfg=None,
-                        norm_cfg=None)
-        ])
-        self.offset_layers = nn.ModuleList([
-            ConvModule(self.in_channels,
-                        self.feat_channels,
-                        kernel_size=3,
-                        padding=1,
-                        bias=True,
-                        act_cfg=act_cfg,
-                        norm_cfg=self.norm_cfg),
-            ConvModule(self.feat_channels,
-                        2,
-                        kernel_size=1,
-                        act_cfg=None,
-                        norm_cfg=None)
-        ])
-        self.rbox_layers = nn.ModuleList([
-            ConvModule(self.in_channels,
-                        self.feat_channels,
-                        kernel_size=3,
-                        padding=1,
-                        bias=True,
-                        act_cfg=act_cfg,
-                        norm_cfg=self.norm_cfg),
-            ConvModule(self.feat_channels,
-                        10,
-                        kernel_size=3,
-                        padding=1,
-                        act_cfg=None,
-                        norm_cfg=None)
-        ])
-        self.theta_layers = nn.ModuleList([
-            ConvModule(self.in_channels,
-                        self.feat_channels,
-                        kernel_size=3,
-                        padding=1,
-                        bias=True,
-                        act_cfg=act_cfg,
-                        norm_cfg=self.norm_cfg),
-            ConvModule(self.feat_channels,
-                        1,
-                        kernel_size=1,
-                        act_cfg=None,
-                        norm_cfg=None)
-        ])
+                        norm_cfg=None)])
+            self.__setattr__(branch_type, convs)
 
     def init_weights(self):
         super().init_weights()
-
-        for m in self.heatmap_layers:
-            if isinstance(m.conv, nn.Conv2d):
-                normal_init(m.conv, std=0.01)            
-        self.heatmap_layers[-1].conv.bias.data.fill_(-2.19)
-
-        for m in self.offset_layers:
-            if isinstance(m.conv, nn.Conv2d):
-                normal_init(m.conv, std=0.01)            
-        self.offset_layers[-1].conv.bias.data.fill_(0.)
-
-        for m in self.rbox_layers:
-            if isinstance(m.conv, nn.Conv2d):
-                normal_init(m.conv, std=0.01)            
-        self.rbox_layers[-1].conv.bias.data.fill_(0.)
-
-        for m in self.theta_layers:
-            if isinstance(m.conv, nn.Conv2d):
-                normal_init(m.conv, std=0.01)            
-        self.theta_layers[-1].conv.bias.data.fill_(0.)
+        for branch in self.head_branches:
+            branch_type = branch['type']
+            for m in self.__getattr__(branch_type):
+                if isinstance(m.conv, nn.Conv2d):
+                    xavier_init(m.conv)     
+                    nn.init.constant_(m.conv.bias, 0.)   
+            if branch_type == 'hm':    
+                self.__getattr__(branch_type)[-1].conv.bias.data.fill_(-2.19)
 
     def forward(self, x):
 
-        heat, off, rbox, theta = x, x, x, x
+        unpacked_x = x[0]
 
-        for layer in self.heatmap_layers:
-            heat = layer(heat)
-        
-        for layer in self.offset_layers:
-            off = layer(off)
+        feat = [unpacked_x for _ in range(len(self.head_branches))]
 
-        for layer in self.rbox_layers:
-            rbox = layer(rbox)
+        for k, branch in enumerate(self.head_branches):
+            branch_type = branch['type']
+            layers = self.__getattr__(branch_type)
+            for layer in layers:
+                feat[k] = layer(feat[k]) 
+            feat[k] = [feat[k]]
 
-        for layer in self.theta_layers:
-            theta = layer(theta)     
-
-        return [heat], [off], [rbox], [theta]  
+        return tuple(feat)  
 
     def __reorder_pts(self, tt, rr, bb, ll):
 
@@ -292,8 +256,8 @@ class BBAVHead(BaseDenseHead):
 
     def loss_single(self,
                     heatmap,
-                    offset,
                     rbox,
+                    offset,
                     theta,
                     targets):
 
@@ -306,33 +270,33 @@ class BBAVHead(BaseDenseHead):
 
         num_pos = max(1, gt_mask.sum())
 
-        heatmap_loss = self.loss_heatmap(heatmap.sigmoid(),
+        heatmap_loss = self.losses['hm'](heatmap.sigmoid(),
                                          gt_heatmap,
                                         #  gt_mask,
                                          avg_factor=num_pos)
 
-        offset_loss = self.loss_offset(offset,
+        offset_loss = self.losses['reg'](offset,
                                        gt_offset,
                                        gt_mask,
                                        avg_factor=num_pos)
 
-        rbox_loss = self.loss_rbox(rbox,
+        rbox_loss = self.losses['wh'](rbox,
                                    gt_rbox,
                                    gt_mask,
                                    avg_factor=num_pos)
 
-        theta_loss = self.loss_theta(theta.sigmoid(),
+        theta_loss = self.losses['cls_theta'](theta.sigmoid(),
                                      gt_theta,
                                      gt_mask,
                                      avg_factor=num_pos)
 
         return heatmap_loss, offset_loss, rbox_loss, theta_loss
 
-    @force_fp32(apply_to=('heatmap', 'offset', 'rbox', 'theta'))
+    @force_fp32(apply_to=('multi_lvl_heatmap', 'multi_lvl_rbox', 'multi_lvl_offset', 'multi_lvl_theta'))
     def loss(self,
              multi_lvl_heatmap,
-             multi_lvl_offset,
              multi_lvl_rbox,
+             multi_lvl_offset,
              multi_lvl_theta,
              gt_bboxes,
              gt_labels,
@@ -346,8 +310,8 @@ class BBAVHead(BaseDenseHead):
         (heatmap_loss, offset_loss,
          rbox_loss, theta_loss) = multi_apply(self.loss_single,
                                               multi_lvl_heatmap,
-                                              multi_lvl_offset,
                                               multi_lvl_rbox,
+                                              multi_lvl_offset,
                                               multi_lvl_theta,
                                               targets)
         
@@ -362,8 +326,8 @@ class BBAVHead(BaseDenseHead):
 
     def decode_heatmap_single(self,
                               heatmap_map,
-                              offset_map,
                               rbox_map,
+                              offset_map,
                               theta_map,
                               num_dets,
                               conf_thr):
@@ -485,8 +449,8 @@ class BBAVHead(BaseDenseHead):
 
     def get_bboxes(self,
                    multi_lvl_heatmap,
-                   multi_lvl_offset,
                    multi_lvl_rbox,
+                   multi_lvl_offset,
                    multi_lvl_theta,
                    img_metas,
                    cfg=None,
@@ -500,8 +464,8 @@ class BBAVHead(BaseDenseHead):
         multi_lvl_box_res, multi_lvl_scores, multi_lvl_clses = multi_apply(
             self.decode_heatmap_single,
             multi_lvl_heatmap,
-            multi_lvl_offset,
             multi_lvl_rbox,
+            multi_lvl_offset,
             multi_lvl_theta,
             [self.num_dets for _ in range(len(multi_lvl_heatmap))],
             [self.conf_thr for _ in range(len(multi_lvl_heatmap))]
