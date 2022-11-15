@@ -15,8 +15,8 @@
             //         "--work-dir", "/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/test",
             //         // "--resume-from", "/media/gejunyao/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV3/exp13/latest.pth",
             //         "--seed", "42"]
-            "args": ["/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/ablation_study4/rretinanet/RRetinaNet.py", "/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/ablation_study4/rretinanet/best_mAP_epoch_150.pth",
-                    "--eval", "details"]
+            // "args": ["/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/ablation_study4/rretinanet/RRetinaNet.py", "/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/ExtremeShipV4/ablation_study4/rretinanet/best_mAP_epoch_150.pth",
+            //         "--eval", "details"]
         }
     ]
 }

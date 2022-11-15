@@ -1,6 +1,12 @@
+import mmcv
+from mmcv import Config, DictAction
+from mmdet.datasets.builder import build_dataset
+from pathlib import Path
+from mmrotate.core.visualization import imshow_det_rbboxes
+import os
 # dataset settings
 dataset_type = 'DOTADataset'
-data_root = 'data/DOTA/split_ss_dota/'
+data_root = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/mmrotate/data/DOTA/split_ss_dota/'
 angle_version = 'le90'
 classes = ['ship',]
 img_norm_cfg = dict(
@@ -55,19 +61,22 @@ data = dict(
         version=angle_version,
         ann_file=data_root + 'train/annfiles/',
         img_prefix=data_root + 'train/images/',
-        pipeline=train_pipeline,
-        classes=classes),
+        classes=classes,
+        pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         version=angle_version,
         ann_file=data_root + 'val/annfiles/',
         img_prefix=data_root + 'val/images/',
-        pipeline=test_pipeline,
-        classes=classes),
+        classes=classes,
+        pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         version=angle_version,
         ann_file=data_root + 'val/images/',
         img_prefix=data_root + 'val/images/',
-        pipeline=test_pipeline,
-        classes=classes))
+        classes=classes,
+        pipeline=test_pipeline))
+dataset = build_dataset(data['train'])
+
+print(dataset)
