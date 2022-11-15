@@ -67,3 +67,4 @@ model = dict(
 
 work_dir = '../exp_results/mmlab_results/dota_ship/benchmark/extreme_ship'
 load_from = '/media/ljm/b930b01d-640a-4b09-8c3c-777d88f63e8b/Gejunyao/utils/centripetalnet_hourglass104_mstest_16x6_210e_coco_20200915_204804-3ccc61e5.pth'
+evaluation = dict(interval=1, metric='mAP', save_best='auto')

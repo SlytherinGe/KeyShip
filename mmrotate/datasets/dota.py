@@ -103,7 +103,10 @@ class DOTADataset(CustomDataset):
                             continue
                         cls_name = bbox_info[8]
                         difficulty = int(bbox_info[9])
-                        label = cls_map[cls_name]
+                        try:
+                            label = cls_map[cls_name]
+                        except KeyError:
+                            continue
                         if difficulty > self.difficulty:
                             pass
                         else:
