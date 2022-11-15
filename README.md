@@ -72,10 +72,9 @@ https://user-images.githubusercontent.com/10410257/154433305-416d129b-60c8-44c7-
 
 ## What's New
 
-**0.3.2** was released in 6/7/2022:
+**0.3.3** was released in 27/10/2022:
 
-- Support Oriented Reppoints (CVPR'22) (#286)
-- Support ConvNeXt backbone (CVPR'22) (#343)
+- Fix several bugs in RepPoints
 
 Please refer to [changelog.md](docs/en/changelog.md) for details and release history.
 
@@ -159,12 +158,12 @@ MMRotate is an open source project that is contributed by researchers and engine
 If you use this toolbox or benchmark in your research, please cite this project.
 
 ```bibtex
-@article{mmrotate2022,
+@inproceedings{zhou2022mmrotate,
   title   = {MMRotate: A Rotated Object Detection Benchmark using PyTorch},
   author  = {Zhou, Yue and Yang, Xue and Zhang, Gefan and Wang, Jiabao and Liu, Yanyi and
              Hou, Liping and Jiang, Xue and Liu, Xingzhao and Yan, Junchi and Lyu, Chengqi and
              Zhang, Wenwei and Chen, Kai},
-  journal= {arXiv preprint arXiv:2204.13317},
+  booktitle={Proceedings of the 30th ACM International Conference on Multimedia},
   year={2022}
 }
 ```
