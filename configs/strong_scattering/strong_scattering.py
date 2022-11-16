@@ -36,7 +36,8 @@ model = dict(
                     loss_weight=1                     
                 ),
                  loss_embedding=dict(
-                     type='DenseAssociativeEmbeddingLoss'
+                     type='DenseAssociativeEmbeddingLoss',
+                     loss_type='instance'
                  )),
     train_cfg = dict(),
     test_cfg = dict(
@@ -107,7 +108,7 @@ data = dict(
     test=dict(version=angle_version,
             pipeline=test_pipeline))
 
-work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/StrongScattering/exp3'
+work_dir = '/media/slytheringe/Disk/Gejunyao/exp_results/mmdetection_files/SSDD/StrongScattering/exp4'
 
 optimizer = dict(type='Adam', lr=0.00001)
 checkpoint_config = dict(interval=30)
