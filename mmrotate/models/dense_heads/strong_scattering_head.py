@@ -101,28 +101,27 @@ class StrongScatteringHead(BaseDenseHead):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.norm_cfg = norm_cfg
-
         self._init_layers()
         
         # init cache saving
-        self.train_cache_cfg = self.train_cfg.get('cache_cfg', None)
+        self.train_cache_cfg = self.train_cfg.get('cache_cfg', None) if self.train_cfg is not None else None
         self.test_cache_cfg = self.test_cfg.get('cache_cfg', None)
         self.__debug = False
-        if self.train_cache_cfg is not None:
-            root = self.train_cache_cfg.get('root', '/home/gejunyao/ramdisk/TrainCache')
-            if not os.path.exists(root):
-                os.mkdir(root)
-            if self.train_cache_cfg.get('save_target', False):
-                save_folder = 'TrainTargets'
-                if not os.path.exists(os.path.join(root, save_folder)):
-                    os.mkdir(os.path.join(root, save_folder))
-                self.save_target = True
-            if self.train_cache_cfg.get('save_output', False):
-                save_folder = 'TrainOutputs'
-                if not os.path.exists(os.path.join(root, save_folder)):
-                    os.mkdir(os.path.join(root, save_folder))
-                self.save_train_o = True      
-            self.__debug = True
+        # if self.train_cache_cfg is not None:
+        #     root = self.train_cache_cfg.get('root', '/home/gejunyao/ramdisk/TrainCache')
+        #     if not os.path.exists(root):
+        #         os.mkdir(root)
+        #     if self.train_cache_cfg.get('save_target', False):
+        #         save_folder = 'TrainTargets'
+        #         if not os.path.exists(os.path.join(root, save_folder)):
+        #             os.mkdir(os.path.join(root, save_folder))
+        #         self.save_target = True
+        #     if self.train_cache_cfg.get('save_output', False):
+        #         save_folder = 'TrainOutputs'
+        #         if not os.path.exists(os.path.join(root, save_folder)):
+        #             os.mkdir(os.path.join(root, save_folder))
+        #         self.save_train_o = True      
+        #     self.__debug = True
 
         if self.test_cache_cfg is not None:
             if not os.path.exists(self.test_cache_cfg['root']):

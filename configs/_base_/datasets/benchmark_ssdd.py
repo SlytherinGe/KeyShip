@@ -1,7 +1,7 @@
 # dataset settings
 dataset_type = 'SSDDDatasetOfficial'
 data_root = './data/Official-SSDD-OPEN/RBox_SSDD/voc_style/'
-angle_version = 'oc'
+angle_version = 'le90'
 img_norm_cfg = dict(
     mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
 train_pipeline = [

@@ -39,7 +39,7 @@ model = dict(
                      type='DenseAssociativeEmbeddingLoss',
                      loss_type='instance'
                  )),
-    train_cfg = dict(),
+    train_cfg = dict(cache_cfg=None),
     test_cfg = dict(
         cache_cfg = dict(
             root = '/home/slytheringe/FastCache/StrongScattering'
@@ -49,8 +49,10 @@ model = dict(
         version = angle_version,
         score_thr = 0.1,
         nms_cfg = dict(type='rnms', iou_thr=0.05),
-        max_per_img=100
-    ))
+        max_per_img=100))
+train_cfg = dict(
+    cache_cfg=None,
+)
 
 img_norm_cfg = dict(
     mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
