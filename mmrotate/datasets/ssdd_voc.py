@@ -207,6 +207,7 @@ class SSDDDataset(DOTADataset):
                     nproc=nproc)
                 eval_results['mAP'] = mean_ap
         elif metric == 'details':
+            eps = np.finfo(np.float32).eps
             iou_thrs = [0.5+0.05*i for i in range(10)]
             mean_aps = []
             for iou_thr in iou_thrs:
@@ -225,8 +226,8 @@ class SSDDDataset(DOTADataset):
                     precisions = class_result['precision']
                     recalls = class_result['recall']
                     top = recalls * precisions
-                    down = recalls + precisions
-                    f_measure = np.mean(2*(top/down))
+                    down = np.maximum(recalls + precisions,eps)
+                    f_measure = np.max(2*(top/down))
                     f_measure_list.append(f_measure)
                 f_score = np.mean(np.array(f_measure_list))
                 mean_aps.append(mean_ap)

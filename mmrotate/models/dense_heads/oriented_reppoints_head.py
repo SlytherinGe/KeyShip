@@ -1022,6 +1022,20 @@ class OrientedRepPointsHead(BaseDenseHead):
             'loss_spatial_init': loss_border_init,
             'loss_spatial_refine': loss_border_refine
         }
+        try:
+            for k, v in loss_dict_all.items():
+                if isinstance(v, list):
+                    for loss in v:
+                        assert torch.isinf(loss).any() == False
+                        assert torch.isnan(loss).any() == False
+                else:
+                    assert torch.isinf(v).any() == False
+                    assert torch.isnan(v).any() == False         
+        except:
+            print('inf or nan encountered!!')   
+            loss_dict_all['loss_spatial_init'] = [pts_preds_refine.sum() * 0 for _ in range(len(cls_scores))]
+            loss_dict_all['loss_spatial_refine'] = pts_preds_refine.sum() * 0
+            print(img_metas)
         return loss_dict_all
 
     @force_fp32(apply_to=('cls_scores', 'pts_preds_init', 'pts_preds_refine'))

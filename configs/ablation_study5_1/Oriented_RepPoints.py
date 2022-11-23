@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/benchmark_ssdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
+    '../_base_/datasets/benchmark_rsdd.py', '../_base_/schedules/schedule_benchmark_150e.py',
     '../_base_/benchmark_runtime.py'
 ]
 angle_version = 'le135'
@@ -72,7 +72,6 @@ model = dict(
         score_thr=0.05,
         nms=dict(iou_thr=0.4),
         max_per_img=2000))
-
 img_norm_cfg = dict(
     mean=[21.55, 21.55, 21.55], std=[24.42, 24.42, 24.42], to_rgb=True)
 train_pipeline = [
@@ -97,10 +96,9 @@ train_pipeline = [
     dict(type='EqualizeTransform', prob=0.3),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', pad_to_square=True),
-    # dict(type='InstanceMaskGenerator'),
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
-]            
+]
 data = dict(
     samples_per_gpu=4,
     # workers_per_gpu=2,
@@ -109,4 +107,4 @@ data = dict(
     val=dict(version=angle_version),
     test=dict(version=angle_version))
 optimizer = dict(type='SGD', lr=0.008, momentum=0.9, weight_decay=0.0001)
-work_dir = '../exp_results/mmlab_results/ssdd/ablation_study4_1/oriented_reppoints'
+work_dir = '../exp_results/mmlab_results/ssdd/ablation_study5_1/oriented_reppoints'
