@@ -4,6 +4,10 @@ import copy
 import cv2
 import mmcv
 import numpy as np
+import torch
+from mmcv.ops import box_iou_rotated
+from mmdet.datasets.pipelines.transforms import (Mosaic, RandomCrop,
+                                                 RandomFlip, Resize)
 from numpy import random
 from mmdet.datasets.pipelines.transforms import RandomFlip, Resize, RandomCenterCropPad, Mosaic, RandomCrop
 from mmdet.datasets.pipelines.auto_augment import Translate, Rotate
@@ -134,6 +138,8 @@ class PolyRandomRotate(object):
             bounds.
         rect_classes (None|list, optional): Specifies classes that needs to
             be rotated by a multiple of 90 degrees.
+        allow_negative (bool, optional): Whether to allow an image that does
+            not contain any bbox area. Default False.
         version  (str, optional): Angle representations. Defaults to 'le90'.
     """
 
@@ -143,6 +149,7 @@ class PolyRandomRotate(object):
                  angles_range=180,
                  auto_bound=False,
                  rect_classes=None,
+                 allow_negative=False,
                  version='le90'):
         self.rotate_ratio = rotate_ratio
         self.auto_bound = auto_bound
@@ -158,6 +165,7 @@ class PolyRandomRotate(object):
         self.angles_range = angles_range
         self.discrete_range = [90, 180, -90, -180]
         self.rect_classes = rect_classes
+        self.allow_negative = allow_negative
         self.version = version
 
     @property
@@ -255,22 +263,24 @@ class PolyRandomRotate(object):
         results['img_shape'] = (bound_h, bound_w, c)
         gt_bboxes = results.get('gt_bboxes', [])
         labels = results.get('gt_labels', [])
-        gt_bboxes = np.concatenate(
-            [gt_bboxes, np.zeros((gt_bboxes.shape[0], 1))], axis=-1)
-        polys = obb2poly_np(gt_bboxes, self.version)[:, :-1].reshape(-1, 2)
-        polys = self.apply_coords(polys).reshape(-1, 8)
-        gt_bboxes = []
-        for pt in polys:
-            pt = np.array(pt, dtype=np.float32)
-            obb = poly2obb_np(pt, self.version) \
-                if poly2obb_np(pt, self.version) is not None\
-                else [0, 0, 0, 0, 0]
-            gt_bboxes.append(obb)
-        gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
-        keep_inds = self.filter_border(gt_bboxes, bound_h, bound_w)
-        gt_bboxes = gt_bboxes[keep_inds, :]
-        labels = labels[keep_inds]
-        if len(gt_bboxes) == 0:
+
+        if len(gt_bboxes):
+            gt_bboxes = np.concatenate(
+                [gt_bboxes, np.zeros((gt_bboxes.shape[0], 1))], axis=-1)
+            polys = obb2poly_np(gt_bboxes, self.version)[:, :-1].reshape(-1, 2)
+            polys = self.apply_coords(polys).reshape(-1, 8)
+            gt_bboxes = []
+            for pt in polys:
+                pt = np.array(pt, dtype=np.float32)
+                obb = poly2obb_np(pt, self.version) \
+                    if poly2obb_np(pt, self.version) is not None\
+                    else [0, 0, 0, 0, 0]
+                gt_bboxes.append(obb)
+            gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
+            keep_inds = self.filter_border(gt_bboxes, bound_h, bound_w)
+            gt_bboxes = gt_bboxes[keep_inds, :]
+            labels = labels[keep_inds]
+        if len(gt_bboxes) == 0 and not self.allow_negative:
             return None
         results['gt_bboxes'] = gt_bboxes
         results['gt_labels'] = labels
@@ -527,6 +537,8 @@ class RRandomCrop(RandomCrop):
             in range [crop_size[0], min(w, crop_size[1])]. Default "absolute".
         allow_negative_crop (bool, optional): Whether to allow a crop that does
             not contain any bbox area. Default False.
+        iof_thr (float): The minimal iof between a object and window.
+            Defaults to 0.7.
 
     Note:
         - If the image is smaller than the absolute crop size, return the
@@ -542,8 +554,10 @@ class RRandomCrop(RandomCrop):
                  crop_size,
                  crop_type='absolute',
                  allow_negative_crop=False,
+                 iof_thr=0.7,
                  version='oc'):
         self.version = version
+        self.iof_thr = iof_thr
         super(RRandomCrop, self).__init__(crop_size, crop_type,
                                           allow_negative_crop)
 
@@ -588,9 +602,13 @@ class RRandomCrop(RandomCrop):
                                    dtype=np.float32)
             bboxes = results[key] - bbox_offset
 
-            valid_inds = (bboxes[:, 0] >=
-                          0) & (bboxes[:, 0] < width) & (bboxes[:, 1] >= 0) & (
-                              bboxes[:, 1] < height)
+            windows = np.array([width / 2, height / 2, width, height, 0],
+                               dtype=np.float32).reshape(-1, 5)
+
+            valid_inds = box_iou_rotated(
+                torch.tensor(bboxes), torch.tensor(windows),
+                mode='iof').numpy().squeeze() > self.iof_thr
+
             # If the crop does not contain any gt-bbox area and
             # allow_negative_crop is False, skip this image.
             if (key == 'gt_bboxes' and not valid_inds.any()
