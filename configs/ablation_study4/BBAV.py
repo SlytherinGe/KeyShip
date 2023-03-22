@@ -25,24 +25,33 @@ model = dict(
     ),
     bbox_head=dict(
         type='BBAVHead',
-        num_classes=1,
         in_channels=256,
-        loss_heatmap=dict(
-            type='GaussianFocalLoss',
-            alpha=2.0,
-            gamma=4.0,
-            loss_weight=1                               
-        ),
-        loss_offset=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=1
-        ),
-        loss_rbox=dict(
-            type='SmoothL1Loss', beta=1.0, loss_weight=1
-        ),
-        loss_theta=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1
-        ),
-    norm_cfg=dict(type='GN', num_groups=32, requires_grad=True)),
+        head_branches=[dict(type='hm', 
+                    out_ch=1,
+                    loss=dict(
+                        type='GaussianFocalLoss',
+                        alpha=2.0,
+                        gamma=4.0,
+                        loss_weight=1)),
+                dict(type='wh', 
+                    out_ch=10,
+                    loss=dict(
+                        type='SmoothL1Loss', 
+                        beta=1.0, 
+                        loss_weight=1)),
+                dict(type='reg', 
+                    out_ch=2,
+                    loss=dict(
+                        type='SmoothL1Loss', 
+                        beta=1.0, 
+                        loss_weight=1)),
+                dict(type='cls_theta', 
+                    out_ch=1,
+                    loss=dict(
+                        type='CrossEntropyLoss', 
+                        use_sigmoid=True, 
+                        loss_weight=1))],
+        norm_cfg=None),
     train_cfg = None,
     test_cfg = dict(
         num_dets = 500,

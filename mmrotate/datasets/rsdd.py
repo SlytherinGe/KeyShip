@@ -152,7 +152,7 @@ class RSDDDataset(DOTADataset):
     def evaluate(self,
                  results,
                  metric='mAP',
-                 logger=None,
+                 logger='silent',
                  proposal_nums=(100, 300, 1000),
                  iou_thr=[0.5, 0.75],
                  scale_ranges=[(0, 1e6), (0, 25), (25, 86.605), (86.605, 1e6)],
@@ -211,11 +211,12 @@ class RSDDDataset(DOTADataset):
                     nproc=nproc)
                 eval_results['mAP'] = mean_ap
         elif metric == 'details':
+            eps = np.finfo(np.float32).eps
             iou_thrs = [0.5+0.05*i for i in range(10)]
             mean_aps = []
             for iou_thr in iou_thrs:
                 print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
-                mean_ap, _ = eval_rbbox_map(
+                mean_ap, raw_results = eval_rbbox_map(
                     results,
                     annotations,
                     scale_ranges=None,
@@ -224,8 +225,18 @@ class RSDDDataset(DOTADataset):
                     dataset=self.CLASSES,
                     logger=logger,
                     nproc=nproc)
+                f_measure_list = []
+                for class_result in raw_results:
+                    precisions = class_result['precision']
+                    recalls = class_result['recall']
+                    top = recalls * precisions
+                    down = np.maximum(recalls + precisions,eps)
+                    f_measure = np.max(2*(top/down))
+                    f_measure_list.append(f_measure)
+                f_score = np.mean(np.array(f_measure_list))
                 mean_aps.append(mean_ap)
                 eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 6)
+                eval_results[f'F1@{int(iou_thr * 100):02d}'] = round(f_score, 6)
             # calculate aps, apm, apl at 0.5  
             mean_ap, _ = eval_rbbox_map(
                 results,

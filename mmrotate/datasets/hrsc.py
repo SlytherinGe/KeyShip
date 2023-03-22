@@ -267,11 +267,12 @@ class HRSCDataset(CustomDataset):
                     nproc=nproc)
                 eval_results['mAP'] = mean_ap
         elif metric == 'details':
+            eps = np.finfo(np.float32).eps
             iou_thrs = [0.5+0.05*i for i in range(10)]
             mean_aps = []
             for iou_thr in iou_thrs:
                 print_log(f'\n{"-" * 15}iou_thr: {iou_thr}{"-" * 15}')
-                mean_ap, _ = eval_rbbox_map(
+                mean_ap, raw_results = eval_rbbox_map(
                     results,
                     annotations,
                     scale_ranges=None,
@@ -280,35 +281,45 @@ class HRSCDataset(CustomDataset):
                     dataset=self.CLASSES,
                     logger=logger,
                     nproc=nproc)
+                f_measure_list = []
+                for class_result in raw_results:
+                    precisions = class_result['precision']
+                    recalls = class_result['recall']
+                    top = recalls * precisions
+                    down = np.maximum(recalls + precisions,eps)
+                    f_measure = np.max(2*(top/down))
+                    f_measure_list.append(f_measure)
+                f_score = np.mean(np.array(f_measure_list))
                 mean_aps.append(mean_ap)
                 eval_results[f'AP{int(iou_thr * 100):02d}'] = round(mean_ap, 6)
+                eval_results[f'F1@{int(iou_thr * 100):02d}'] = round(f_score, 6)
             # calculate aps, apm, apl at 0.5  
-            mean_ap, _ = eval_rbbox_map(
-                results,
-                annotations,
-                scale_ranges=scale_ranges,
-                iou_thr=0.5,
-                dataset=self.CLASSES,
-                use_07_metric=False,
-                logger=logger,
-                nproc=nproc)    
-            eval_results['mAP@.50'] = round(mean_ap[0], 6)  
-            eval_results['mAP_s@.50'] = round(mean_ap[1], 6)
-            eval_results['mAP_m@.50'] = round(mean_ap[2], 6)
-            eval_results['mAP_l@.50'] = round(mean_ap[3], 6)      
-            mean_ap, _ = eval_rbbox_map(
-                results,
-                annotations,
-                scale_ranges=scale_ranges,
-                iou_thr=0.75,
-                dataset=self.CLASSES,
-                use_07_metric=False,
-                logger=logger,
-                nproc=nproc)    
-            eval_results['mAP@.75'] = round(mean_ap[0], 6)  
-            eval_results['mAP_s@.75'] = round(mean_ap[1], 6)
-            eval_results['mAP_m@.75'] = round(mean_ap[2], 6) 
-            eval_results['mAP_l@.75'] = round(mean_ap[3], 6)    
+            # mean_ap, _ = eval_rbbox_map(
+            #     results,
+            #     annotations,
+            #     scale_ranges=scale_ranges,
+            #     iou_thr=0.5,
+            #     dataset=self.CLASSES,
+            #     use_07_metric=False,
+            #     logger=logger,
+            #     nproc=nproc)    
+            # eval_results['mAP@.50'] = round(mean_ap[0], 6)  
+            # eval_results['mAP_s@.50'] = round(mean_ap[1], 6)
+            # eval_results['mAP_m@.50'] = round(mean_ap[2], 6)
+            # eval_results['mAP_l@.50'] = round(mean_ap[3], 6)      
+            # mean_ap, _ = eval_rbbox_map(
+            #     results,
+            #     annotations,
+            #     scale_ranges=scale_ranges,
+            #     iou_thr=0.75,
+            #     dataset=self.CLASSES,
+            #     use_07_metric=False,
+            #     logger=logger,
+            #     nproc=nproc)    
+            # eval_results['mAP@.75'] = round(mean_ap[0], 6)  
+            # eval_results['mAP_s@.75'] = round(mean_ap[1], 6)
+            # eval_results['mAP_m@.75'] = round(mean_ap[2], 6) 
+            # eval_results['mAP_l@.75'] = round(mean_ap[3], 6)    
             eval_results['mAP'] = sum(mean_aps) / len(mean_aps)
             eval_results.move_to_end('mAP', last=False)        
         else:
