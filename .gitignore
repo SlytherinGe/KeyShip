@@ -127,3 +127,5 @@ tmp
 mmrotate/.mim
 data/*
 exp_results
+outputs
+pretrained

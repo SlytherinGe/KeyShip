@@ -1,5 +1,4 @@
-# Copyright (c) OpenMMLab. All rights reserved.
-from .backbones import *  # noqa: F401, F403
+# Copyright (c) OpenMMLab. All rights reserved.3
 from .builder import (ROTATED_BACKBONES, ROTATED_DETECTORS, ROTATED_HEADS,
                       ROTATED_LOSSES, ROTATED_NECKS, ROTATED_ROI_EXTRACTORS,
                       ROTATED_SHARED_HEADS, build_backbone, build_detector,
@@ -7,9 +6,6 @@ from .builder import (ROTATED_BACKBONES, ROTATED_DETECTORS, ROTATED_HEADS,
                       build_shared_head)
 from .dense_heads import *  # noqa: F401, F403
 from .detectors import *  # noqa: F401, F403
-from .losses import *  # noqa: F401, F403
-from .necks import *  # noqa: F401, F403
-from .roi_heads import *  # noqa: F401, F403
 from .utils import *  # noqa: F401, F403
 
 __all__ = [
